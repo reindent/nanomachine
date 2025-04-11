@@ -57,11 +57,10 @@ const VncControl: React.FC<VncControlProps> = ({
   hasControl,
   canvasRef,
   onTakeControl,
-  onReleaseControl,
   children
 }) => {
   // Initialize tooltip system
-  const { showTooltip, hideTooltip, renderTooltip } = useTooltip();
+  const { renderTooltip } = useTooltip();
   
   // Mouse event handlers using relative positioning
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {

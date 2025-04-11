@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import { processVncFrame, handleCopyRect } from '../vnc/pixelUtils';
 import VncControl from '../vnc/VncControl';
-import Tooltip, { useTooltip } from './Tooltip';
+import { useTooltip } from './Tooltip';
+import { connectToVnc, disconnectFromVnc, requestVncConnection, requestControl, releaseControl } from '../../services/vncSocketService';
 
 interface VMCanvasProps {
   width?: number;
@@ -72,11 +73,9 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     setIsLoading(true);
     setError(null);
     
-    // Create Socket.IO connection to VNC namespace
+    // Create Socket.IO connection using our service
     console.log('Connecting to VNC server...');
-    const socket = io('http://' + window.location.hostname + ':3100/vnc', {
-      transports: ['websocket', 'polling']
-    });
+    const socket = connectToVnc();
     console.log('Socket created:', socket);
     socketRef.current = socket;
     
@@ -94,13 +93,13 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
       }
     });
     
-    socket.on('connect_error', (err) => {
+    socket.on('connect_error', (err: Error) => {
       console.error('Socket connection error:', err);
       setError('Connection error: ' + err.message);
       setIsLoading(false);
     });
     
-    socket.on('vnc-status', (status) => {
+    socket.on('vnc-status', (status: { connected: boolean; width?: number; height?: number; error?: string }) => {
       console.log('Received VNC status:', status);
       if (status.connected) {
         setIsConnected(true);
@@ -143,7 +142,7 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     });
     
     // Handle frame updates
-    socket.on('vnc-frame', (frame) => {
+    socket.on('vnc-frame', (frame: { x: number; y: number; width: number; height: number; data: string; encoding: number; bpp: number }) => {
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
         if (ctx) {
@@ -193,7 +192,7 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     });
     
     // Handle CopyRect encoding
-    socket.on('vnc-copyrect', (rect) => {
+    socket.on('vnc-copyrect', (rect: { x: number; y: number; width: number; height: number; srcX: number; srcY: number }) => {
       console.log('Received CopyRect:', rect);
       if (canvasRef.current) {
         handleCopyRect(rect, canvasRef.current);
@@ -201,16 +200,13 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     });
     
     // Request connection to VNC server
-    socket.emit('connect-vnc');
+    requestVncConnection();
   };
 
   // Disconnect from VNC server
   const handleDisconnect = () => {
-    if (socketRef.current) {
-      socketRef.current.emit('disconnect-vnc');
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
+    disconnectFromVnc();
+    socketRef.current = null;
     
     setIsConnected(false);
     
@@ -348,15 +344,13 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
                 onClick={() => {
                   if (hasControl) {
                     // Release control
-                    if (socketRef.current) {
-                      socketRef.current.emit('release-control');
-                      setHasControl(false);
-                    }
+                    releaseControl();
+                    setHasControl(false);
                   } else {
                     // Take control
+                    console.log('VMCanvas: Emitting take-control event');
+                    requestControl();
                     if (socketRef.current) {
-                      console.log('VMCanvas: Emitting take-control event');
-                      socketRef.current.emit('take-control');
                       socketRef.current.once('control-granted', (granted: boolean) => {
                         console.log('VMCanvas: Received control-granted response:', granted);
                         if (granted) {
