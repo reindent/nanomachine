@@ -1,5 +1,5 @@
 import React from 'react';
-import NoVNCCanvas from '../common/NoVNCCanvas';
+import VMCanvas from '../common/VMCanvas';
 
 interface NanomachineCanvasProps {
   width: number;
@@ -13,7 +13,7 @@ const NanomachineCanvas: React.FC<NanomachineCanvasProps> = ({ width, height }) 
         <h2 className="text-sm uppercase tracking-wider text-gray-500 font-medium">Your Nanomachine</h2>
       </div>
       <div className="bg-white p-3">
-        <NoVNCCanvas width={width} height={height} />
+        <VMCanvas width={width} height={height} />
       </div>
     </div>
   );

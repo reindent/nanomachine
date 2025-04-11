@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import { router as taskRoutes } from './routes/tasks';
 import { router as statusRoutes } from './routes/status';
 import { Task, SystemStatus } from './types';
+import createVNCService from './vncService';
 
 const app = express();
 const server = http.createServer(app);
@@ -14,6 +15,9 @@ const io = new Server(server, {
     methods: ['GET', 'POST']
   }
 });
+
+// Initialize VNC service
+createVNCService(io);
 const PORT = process.env.SERVER_PORT || 3100;
 
 // Middleware

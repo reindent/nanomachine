@@ -27,6 +27,8 @@
     "@types/socket.io": "^3.0.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "rfb2": "^0.2.2",
+    "sharp": "^0.34.1",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "ws": "^8.16.0"
