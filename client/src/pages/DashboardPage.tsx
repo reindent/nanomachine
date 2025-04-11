@@ -67,7 +67,7 @@ export default function DashboardPage() {
       {/* Right Column - Contains NoVNC Canvas, Tasks and System Status */}
       <div className="w-2/3 h-full overflow-y-auto p-3">
         {/* Main Canvas Area */}
-        <NanomachineCanvas width={700} height={500} />
+        <NanomachineCanvas width={800} height={450} />
 
         {/* Task Information */}
         <ActiveTasks 
