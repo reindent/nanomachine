@@ -1,0 +1,33 @@
+{
+  "name": "nanomachine",
+  "version": "1.0.0",
+  "description": "API bridge for nanobrowser extension",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bridge/index.js",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "ts-node bridge/index.ts",
+    "dev:client": "cd client && npm run dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "nanobrowser",
+    "api",
+    "bridge",
+    "chrome",
+    "extension"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
