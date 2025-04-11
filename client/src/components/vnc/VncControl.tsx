@@ -1,5 +1,6 @@
 import React from 'react';
 import { Socket } from 'socket.io-client';
+import { useTooltip } from '../common/Tooltip';
 
 // VNC keysym mappings for common keys
 // Based on X11 keysyms used by the RFB protocol
@@ -44,8 +45,8 @@ interface VncControlProps {
   isConnected: boolean;
   hasControl: boolean;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
-  displayDimensions: { width: number; height: number };
-  onTakeControl: () => void;
+  displayDimensions?: { width: number; height: number };
+  onTakeControl?: () => void;
   onReleaseControl: () => void;
   children?: React.ReactNode;
 }
@@ -55,47 +56,42 @@ const VncControl: React.FC<VncControlProps> = ({
   isConnected,
   hasControl,
   canvasRef,
-  displayDimensions,
   onTakeControl,
   onReleaseControl,
   children
 }) => {
+  // Initialize tooltip system
+  const { showTooltip, hideTooltip, renderTooltip } = useTooltip();
+  
   // Mouse event handlers using relative positioning
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isConnected || !socket || !canvasRef.current) return;
+  const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    if (!isConnected || !socket || !hasControl || !canvasRef.current) return;
     
     // Calculate relative position (0-1)
-    const canvas = canvasRef.current; // Store reference to avoid null checks
+    const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const relativeX = (e.clientX - rect.left) / rect.width;
     const relativeY = (e.clientY - rect.top) / rect.height;
-    
-    // Debug mouse movement
-    console.log(`Mouse move: ${relativeX.toFixed(3)}, ${relativeY.toFixed(3)}`);
     
     // Send relative position to server
     socket.emit('mouse-move', { relativeX, relativeY });
   };
   
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isConnected || !socket || !canvasRef.current) return;
+  const handleMouseDown = (e: React.MouseEvent<HTMLElement>) => {
+    if (!isConnected || !socket || !hasControl || !canvasRef.current) return;
     e.preventDefault(); // Prevent default behavior like text selection
     
     // Calculate relative position (0-1)
-    const canvas = canvasRef.current; // Store reference to avoid null checks
+    const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const relativeX = (e.clientX - rect.left) / rect.width;
     const relativeY = (e.clientY - rect.top) / rect.height;
     
     // Map mouse buttons to VNC button mask
-    // Left: 1, Middle: 2, Right: 4
     let buttonMask = 0;
     if (e.button === 0) buttonMask = 1;      // Left button
     else if (e.button === 1) buttonMask = 2; // Middle button
     else if (e.button === 2) buttonMask = 4; // Right button
-    
-    // Debug mouse button
-    console.log(`Mouse down: ${relativeX.toFixed(3)}, ${relativeY.toFixed(3)}, button: ${e.button}, mask: ${buttonMask}`);
     
     // Send mouse down event with relative position
     socket.emit('mouse-button', { 
@@ -106,12 +102,12 @@ const VncControl: React.FC<VncControlProps> = ({
     });
   };
   
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isConnected || !socket || !canvasRef.current) return;
+  const handleMouseUp = (e: React.MouseEvent<HTMLElement>) => {
+    if (!isConnected || !socket || !hasControl || !canvasRef.current) return;
     e.preventDefault();
     
     // Calculate relative position (0-1)
-    const canvas = canvasRef.current; // Store reference to avoid null checks
+    const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const relativeX = (e.clientX - rect.left) / rect.width;
     const relativeY = (e.clientY - rect.top) / rect.height;
@@ -122,9 +118,6 @@ const VncControl: React.FC<VncControlProps> = ({
     else if (e.button === 1) buttonMask = 2; // Middle button
     else if (e.button === 2) buttonMask = 4; // Right button
     
-    // Debug mouse button
-    console.log(`Mouse up: ${relativeX.toFixed(3)}, ${relativeY.toFixed(3)}, button: ${e.button}, mask: ${buttonMask}`);
-    
     // Send mouse up event with relative position
     socket.emit('mouse-button', { 
       relativeX, 
@@ -133,10 +126,10 @@ const VncControl: React.FC<VncControlProps> = ({
       isDown: false
     });
   };
-
+  
   // Handle keyboard events
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!isConnected || !socket) return;
+    if (!isConnected || !socket || !hasControl) return;
     
     // Prevent default browser behavior for most keys
     if (e.key !== 'F5' && e.key !== 'F12') {
@@ -167,7 +160,7 @@ const VncControl: React.FC<VncControlProps> = ({
   };
   
   const handleKeyUp = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!isConnected || !socket) return;
+    if (!isConnected || !socket || !hasControl) return;
     
     // Prevent default browser behavior for most keys
     if (e.key !== 'F5' && e.key !== 'F12') {
@@ -197,61 +190,56 @@ const VncControl: React.FC<VncControlProps> = ({
 
   return (
     <div 
-      className={`p-4 rounded-lg shadow-lg mb-4 w-full relative vnc-container ${hasControl ? 'bg-gray-700' : 'bg-gray-800'} transition-colors duration-300`}
-      style={{ overflow: 'hidden', outline: 'none' }}
+      className={`relative vnc-container ${hasControl ? 'has-control' : ''}`}
+      style={{ outline: 'none' }}
       tabIndex={hasControl ? 0 : -1} // Only focusable when in control
       onKeyDown={hasControl ? handleKeyDown : undefined}
       onKeyUp={hasControl ? handleKeyUp : undefined}
     >
-      <canvas 
-        ref={canvasRef} 
-        width={displayDimensions.width} 
-        height={displayDimensions.height}
-        className="rounded border-2 border-gray-700 mx-auto block"
-        onMouseMove={hasControl ? handleMouseMove : undefined}
-        onMouseDown={hasControl ? handleMouseDown : undefined}
-        onMouseUp={hasControl ? handleMouseUp : undefined}
-        onContextMenu={(e) => e.preventDefault()} // Prevent right-click menu
-        style={{ maxWidth: '100%', display: 'block' }}
-      />
-      
-      {/* Take Control button overlay - completely transparent except for the button */}
+      {/* Render tooltips */}
+      {renderTooltip()}
+      {/* Take Control button overlay - only visible on hover */}
       {isConnected && !hasControl && (
-        <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none">
+        <div 
+          className="absolute inset-0 flex items-center justify-center z-20 bg-black/5 hover:bg-black/25 group transition-all duration-200"
+        >
           <button 
-            onClick={() => {
-              onTakeControl();
-              // Focus the container after a short delay to ensure it's ready
-              setTimeout(() => {
-                const container = document.querySelector('.vnc-container');
-                if (container instanceof HTMLElement) {
-                  container.focus();
-                }
-              }, 50);
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent event bubbling
+              
+              if (socket && onTakeControl) {
+                socket.emit('take-control');
+                
+                // Listen for control granted response
+                socket.once('control-granted', (granted: boolean) => {
+                  if (granted) {
+                    onTakeControl();
+                    
+                    // Focus the container after a short delay to ensure it's ready
+                    setTimeout(() => {
+                      const container = document.querySelector('.vnc-container');
+                      if (container instanceof HTMLElement) container.focus();
+                    }, 50);
+                  }
+                });
+              }
             }}
-            className="bg-blue-500 bg-opacity-80 hover:bg-opacity-100 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all duration-200 transform hover:scale-105 pointer-events-auto"
+            className="cursor-pointer bg-blue-500/90 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all duration-200 transform hover:scale-105 opacity-0 group-hover:opacity-100"
           >
             Take Control
           </button>
         </div>
       )}
       
-      {/* Control indicator and release button */}
-      {isConnected && hasControl && (
-        <div className="absolute top-2 right-2 flex items-center space-x-2">
-          <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-md font-medium">
-            Control Active
-          </div>
-          <button 
-            onClick={onReleaseControl}
-            className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded-md shadow-md text-sm"
-          >
-            Release Control
-          </button>
-        </div>
-      )}
-      
-      {children}
+      {/* Canvas is now a direct child */}
+      <div 
+        className="w-full h-full"
+        onMouseMove={hasControl ? handleMouseMove : undefined}
+        onMouseDown={hasControl ? handleMouseDown : undefined}
+        onMouseUp={hasControl ? handleMouseUp : undefined}
+      >
+        {children}
+      </div>
     </div>
   );
 };
