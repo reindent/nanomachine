@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { processVncFrame, handleCopyRect } from '../vnc/pixelUtils';
 
 // VNC keysym mappings for common keys
 // Based on X11 keysyms used by the RFB protocol
@@ -166,127 +167,46 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     
     // Handle frame updates
     socket.on('vnc-frame', (frame) => {
-
-      
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
         if (ctx) {
           try {
-            // For raw RGB/RGBA data
-            const binary = atob(frame.data);
-
+            // Process the pixel data using our utility function
+            const array = processVncFrame(frame);
             
-            // Create array for pixel data (always RGBA for browser)
-            const array = new Uint8ClampedArray(frame.width * frame.height * 4);
+            // Create the image data from the array
+            const imageData = new ImageData(array, frame.width, frame.height);
             
-            // Process the pixel data based on bits per pixel
-            const bytesPerPixel = frame.bpp ? frame.bpp / 8 : 4;
-            
-            if (bytesPerPixel === 4) {
-              // 32-bit color (BGRA or similar)
-              // VNC typically uses BGRA format, but we need RGBA for the browser
-              for (let i = 0, j = 0; i < binary.length && j < array.length; i += bytesPerPixel, j += 4) {
-                // Get color values
-                const b = binary.charCodeAt(i);
-                const g = binary.charCodeAt(i + 1);
-                const r = binary.charCodeAt(i + 2);
-                // Skip alpha value as we're always using 255
-                
-                // Store as RGBA
-                array[j] = r;     // Red
-                array[j + 1] = g; // Green
-                array[j + 2] = b; // Blue
-                array[j + 3] = 255; // Always use full opacity
-                
-
+            // If this is a full frame update, update our canvas dimensions
+            if (frame.x === 0 && frame.y === 0 && frame.width > 100 && frame.height > 100) {
+              // Update display dimensions based on the frame size
+              updateDisplayDimensions(frame.width, frame.height);
+              
+              // Resize the full frame canvas to match the VNC screen size
+              if (fullFrameCanvasRef.current) {
+                fullFrameCanvasRef.current.width = frame.width;
+                fullFrameCanvasRef.current.height = frame.height;
               }
-            } else if (bytesPerPixel === 3) {
-              // 24-bit color (BGR)
-              for (let i = 0, j = 0; i < binary.length && j < array.length; i += bytesPerPixel, j += 4) {
-                // Get color values
-                const b = binary.charCodeAt(i);
-                const g = binary.charCodeAt(i + 1);
-                const r = binary.charCodeAt(i + 2);
-                
-                // Store as RGBA
-                array[j] = r;     // Red
-                array[j + 1] = g; // Green
-                array[j + 2] = b; // Blue
-                array[j + 3] = 255; // Alpha (opaque)
-              }
-            } else if (bytesPerPixel === 2) {
-              // 16-bit color (typically 5-6-5 RGB)
-              for (let i = 0, j = 0; i < binary.length && j < array.length; i += bytesPerPixel, j += 4) {
-                // Get 16-bit pixel value (2 bytes)
-                const pixelValue = (binary.charCodeAt(i) << 8) | binary.charCodeAt(i + 1);
-                
-                // Extract RGB components based on shifts if provided
-                let r, g, b;
-                if (frame.redShift !== undefined) {
-                  // Use provided color shifts
-                  r = ((pixelValue >> frame.redShift) & 0xFF);
-                  g = ((pixelValue >> frame.greenShift) & 0xFF);
-                  b = ((pixelValue >> frame.blueShift) & 0xFF);
-                } else {
-                  // Assume standard 5-6-5 format
-                  r = ((pixelValue >> 11) & 0x1F) << 3; // 5 bits red
-                  g = ((pixelValue >> 5) & 0x3F) << 2;  // 6 bits green
-                  b = (pixelValue & 0x1F) << 3;         // 5 bits blue
-                }
-                
-                // Store as RGBA
-                array[j] = r;     // Red
-                array[j + 1] = g; // Green
-                array[j + 2] = b; // Blue
-                array[j + 3] = 255; // Alpha (opaque)
-              }
-            } else {
-              console.error('Unsupported bytes per pixel:', bytesPerPixel);
-              return;
             }
             
-            // Create ImageData and put it on the canvas
-            try {
-
-              
-              // Create the image data from the array
-              const imageData = new ImageData(array, frame.width, frame.height);
-              
-              // If this is a full frame update, update our canvas dimensions
-              if (frame.x === 0 && frame.y === 0 && frame.width > 100 && frame.height > 100) {
-                // Update display dimensions based on the frame size
-                updateDisplayDimensions(frame.width, frame.height);
+            // Update the full frame canvas with this frame data
+            if (fullFrameCanvasRef.current) {
+              const fullCtx = fullFrameCanvasRef.current.getContext('2d');
+              if (fullCtx) {
+                // Draw this frame update to the full frame canvas
+                fullCtx.putImageData(imageData, frame.x, frame.y);
                 
-                // Resize the full frame canvas to match the VNC screen size
-                if (fullFrameCanvasRef.current) {
-                  fullFrameCanvasRef.current.width = frame.width;
-                  fullFrameCanvasRef.current.height = frame.height;
-                }
+                // Fill the main display canvas with white background first
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                
+                // Draw the full frame canvas to the display canvas with proper scaling
+                ctx.drawImage(
+                  fullFrameCanvasRef.current,
+                  0, 0, fullFrameCanvasRef.current.width, fullFrameCanvasRef.current.height,  // Source rectangle
+                  0, 0, canvasRef.current.width, canvasRef.current.height  // Destination rectangle (scaled)
+                );
               }
-              
-              // Update the full frame canvas with this frame data
-              if (fullFrameCanvasRef.current) {
-                const fullCtx = fullFrameCanvasRef.current.getContext('2d');
-                if (fullCtx) {
-                  // Draw this frame update to the full frame canvas
-                  fullCtx.putImageData(imageData, frame.x, frame.y);
-                  
-                  // Fill the main display canvas with white background first
-                  ctx.fillStyle = '#ffffff';
-                  ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-                  
-                  // Draw the full frame canvas to the display canvas with proper scaling
-                  ctx.drawImage(
-                    fullFrameCanvasRef.current,
-                    0, 0, fullFrameCanvasRef.current.width, fullFrameCanvasRef.current.height,  // Source rectangle
-                    0, 0, canvasRef.current.width, canvasRef.current.height  // Destination rectangle (scaled)
-                  );
-                }
-              }
-              
-              console.log('Frame rendered successfully');
-            } catch (imgErr) {
-              console.error('Error creating ImageData:', imgErr, 'width:', frame.width, 'height:', frame.height, 'data length:', array.length);
             }
           } catch (err) {
             console.error('Error processing VNC frame:', err);
@@ -298,19 +218,8 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     // Handle CopyRect encoding
     socket.on('vnc-copyrect', (rect) => {
       console.log('Received CopyRect:', rect);
-      
       if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          try {
-            // Copy rectangle from source to destination
-            const imageData = ctx.getImageData(rect.srcX, rect.srcY, rect.width, rect.height);
-            ctx.putImageData(imageData, rect.x, rect.y);
-            console.log('CopyRect rendered successfully');
-          } catch (err) {
-            console.error('Error processing CopyRect:', err);
-          }
-        }
+        handleCopyRect(rect, canvasRef.current);
       }
     });
     
