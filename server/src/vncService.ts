@@ -104,6 +104,23 @@ export function createVNCService(io: SocketIOServer) {
       }
     });
     
+    // Handle keyboard events
+    socket.on('key-event', (data) => {
+      console.log('VNC: Received key event:', data);
+      if (isConnected && vncClient) {
+        try {
+          // Send key event to VNC server
+          // keyEvent(keysym, isDown) - keysym is the X11 keysym, isDown is true for keydown, false for keyup
+          vncClient.keyEvent(data.keysym, data.isDown);
+          console.log(`VNC: Key event sent - keysym: ${data.keysym}, isDown: ${data.isDown}`);
+        } catch (err) {
+          console.error('VNC: Error handling key event:', err);
+        }
+      } else {
+        console.log('VNC: Ignoring key event, not connected or no client');
+      }
+    });
+    
     // Handle disconnect request
     socket.on('disconnect-vnc', () => {
       if (vncClient) {
@@ -147,7 +164,10 @@ export function createVNCService(io: SocketIOServer) {
           height: vncClient.height,
           bpp: vncClient.bpp,
           depth: vncClient.depth,
-          pixelFormat: vncClient.pixelFormat
+          pixelFormat: vncClient.pixelFormat,
+          redShift: vncClient.redShift,
+          greenShift: vncClient.greenShift,
+          blueShift: vncClient.blueShift
         });
       });
       

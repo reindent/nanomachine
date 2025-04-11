@@ -1,6 +1,44 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
+// VNC keysym mappings for common keys
+// Based on X11 keysyms used by the RFB protocol
+const KEYSYMS: Record<string, number> = {
+  // Control keys
+  'Backspace': 0xff08,
+  'Tab': 0xff09,
+  'Enter': 0xff0d,
+  'Escape': 0xff1b,
+  'Home': 0xff50,
+  'End': 0xff57,
+  'PageUp': 0xff55,
+  'PageDown': 0xff56,
+  'ArrowLeft': 0xff51,
+  'ArrowUp': 0xff52,
+  'ArrowRight': 0xff53,
+  'ArrowDown': 0xff54,
+  'Insert': 0xff63,
+  'Delete': 0xffff,
+  'F1': 0xffbe,
+  'F2': 0xffbf,
+  'F3': 0xffc0,
+  'F4': 0xffc1,
+  'F5': 0xffc2,
+  'F6': 0xffc3,
+  'F7': 0xffc4,
+  'F8': 0xffc5,
+  'F9': 0xffc6,
+  'F10': 0xffc7,
+  'F11': 0xffc8,
+  'F12': 0xffc9,
+  'Shift': 0xffe1,
+  'Control': 0xffe3,
+  'Alt': 0xffe9,
+  'Meta': 0xffeb,
+  'CapsLock': 0xffe5,
+  ' ': 0x0020,  // Space
+};
+
 interface VMCanvasProps {
   width?: number;
   height?: number;
@@ -37,11 +75,11 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     fullFrameCanvasRef.current.height = height;
     
     if (canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
+      const ctx = canvasRef.current.getContext('2d', { alpha: false });
       if (ctx) {
-        ctx.fillStyle = '#1f2937';
+        ctx.fillStyle = '#ffffff'; // White background
         ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#333333';
         ctx.font = '20px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('VNC Disconnected', canvasRef.current.width / 2, canvasRef.current.height / 2);
@@ -128,7 +166,7 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     
     // Handle frame updates
     socket.on('vnc-frame', (frame) => {
-      console.log('Received frame update:', frame.x, frame.y, frame.width, frame.height, 'bpp:', frame.bpp);
+
       
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
@@ -136,29 +174,31 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
           try {
             // For raw RGB/RGBA data
             const binary = atob(frame.data);
-            console.log('Decoded binary data length:', binary.length);
+
             
             // Create array for pixel data (always RGBA for browser)
             const array = new Uint8ClampedArray(frame.width * frame.height * 4);
             
             // Process the pixel data based on bits per pixel
             const bytesPerPixel = frame.bpp ? frame.bpp / 8 : 4;
-            console.log('Bytes per pixel:', bytesPerPixel);
             
             if (bytesPerPixel === 4) {
               // 32-bit color (BGRA or similar)
+              // VNC typically uses BGRA format, but we need RGBA for the browser
               for (let i = 0, j = 0; i < binary.length && j < array.length; i += bytesPerPixel, j += 4) {
                 // Get color values
                 const b = binary.charCodeAt(i);
                 const g = binary.charCodeAt(i + 1);
                 const r = binary.charCodeAt(i + 2);
-                const a = binary.charCodeAt(i + 3);
+                // Skip alpha value as we're always using 255
                 
                 // Store as RGBA
                 array[j] = r;     // Red
                 array[j + 1] = g; // Green
                 array[j + 2] = b; // Blue
-                array[j + 3] = a !== undefined ? a : 255; // Alpha
+                array[j + 3] = 255; // Always use full opacity
+                
+
               }
             } else if (bytesPerPixel === 3) {
               // 24-bit color (BGR)
@@ -207,6 +247,8 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
             
             // Create ImageData and put it on the canvas
             try {
+
+              
               // Create the image data from the array
               const imageData = new ImageData(array, frame.width, frame.height);
               
@@ -229,8 +271,9 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
                   // Draw this frame update to the full frame canvas
                   fullCtx.putImageData(imageData, frame.x, frame.y);
                   
-                  // Clear the main display canvas
-                  ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                  // Fill the main display canvas with white background first
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
                   
                   // Draw the full frame canvas to the display canvas with proper scaling
                   ctx.drawImage(
@@ -297,9 +340,9 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
-        ctx.fillStyle = '#1f2937';
-        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        ctx.fillStyle = '#333333';
         ctx.font = '20px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('VNC Disconnected', canvasRef.current.width / 2, canvasRef.current.height / 2);
@@ -417,6 +460,67 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     });
   };
 
+  // Handle keyboard events
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isConnected || !socketRef.current) return;
+    
+    // Prevent default browser behavior for most keys
+    if (e.key !== 'F5' && e.key !== 'F12') {
+      e.preventDefault();
+    }
+    
+    // Get the keysym for this key
+    let keysym = KEYSYMS[e.key];
+    
+    // If it's a printable ASCII character, use the charCode
+    if (!keysym && e.key.length === 1) {
+      const charCode = e.key.charCodeAt(0);
+      if (charCode >= 32 && charCode <= 126) {
+        keysym = charCode;
+      }
+    }
+    
+    // If we have a valid keysym, send the key event
+    if (keysym) {
+      console.log(`Key down: ${e.key}, keysym: ${keysym}`);
+      socketRef.current.emit('key-event', {
+        keysym,
+        isDown: true
+      });
+    } else {
+      console.log(`Unmapped key: ${e.key}`);
+    }
+  };
+  
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isConnected || !socketRef.current) return;
+    
+    // Prevent default browser behavior for most keys
+    if (e.key !== 'F5' && e.key !== 'F12') {
+      e.preventDefault();
+    }
+    
+    // Get the keysym for this key
+    let keysym = KEYSYMS[e.key];
+    
+    // If it's a printable ASCII character, use the charCode
+    if (!keysym && e.key.length === 1) {
+      const charCode = e.key.charCodeAt(0);
+      if (charCode >= 32 && charCode <= 126) {
+        keysym = charCode;
+      }
+    }
+    
+    // If we have a valid keysym, send the key event
+    if (keysym) {
+      console.log(`Key up: ${e.key}, keysym: ${keysym}`);
+      socketRef.current.emit('key-event', {
+        keysym,
+        isDown: false
+      });
+    }
+  };
+  
   // Clean up socket connection when component unmounts
   useEffect(() => {
     return () => {
@@ -426,51 +530,107 @@ export default function VMCanvas({ width = 800, height = 600, maxWidth }: VMCanv
     };
   }, []);
 
+  // Track control state
+  const [hasControl, setHasControl] = useState(false);
+
   return (
     <div className="flex flex-col items-center w-full" ref={containerRef}>
-      <div className="bg-gray-800 p-4 rounded-lg shadow-lg mb-4 w-full" style={{ overflow: 'hidden' }}>
+      <div 
+        className={`p-4 rounded-lg shadow-lg mb-4 w-full relative vnc-container ${hasControl ? 'bg-gray-700' : 'bg-gray-800'} transition-colors duration-300`}
+        style={{ overflow: 'hidden', outline: 'none' }}
+        tabIndex={hasControl ? 0 : -1} // Only focusable when in control
+        onKeyDown={hasControl ? handleKeyDown : undefined}
+        onKeyUp={hasControl ? handleKeyUp : undefined}
+      >
         <canvas 
           ref={canvasRef} 
           width={displayDimensions.width} 
           height={displayDimensions.height}
           className="rounded border-2 border-gray-700 mx-auto block"
-          onMouseMove={handleMouseMove}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
+          onMouseMove={hasControl ? handleMouseMove : undefined}
+          onMouseDown={hasControl ? handleMouseDown : undefined}
+          onMouseUp={hasControl ? handleMouseUp : undefined}
           onContextMenu={(e) => e.preventDefault()} // Prevent right-click menu
           style={{ maxWidth: '100%', display: 'block' }}
         />
+        
+        {/* Take Control button overlay - completely transparent except for the button */}
+        {isConnected && !hasControl && (
+          <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center pointer-events-none">
+            <button 
+              onClick={() => {
+                setHasControl(true);
+                // Focus the container after a short delay to ensure it's ready
+                setTimeout(() => {
+                  const container = document.querySelector('.vnc-container');
+                  if (container instanceof HTMLElement) {
+                    container.focus();
+                  }
+                }, 50);
+              }}
+              className="bg-blue-500 bg-opacity-80 hover:bg-opacity-100 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all duration-200 transform hover:scale-105 pointer-events-auto"
+            >
+              Take Control
+            </button>
+          </div>
+        )}
       </div>
       {error && (
         <div className="mb-4 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
           Error: {error}
         </div>
       )}
-      <div className="flex space-x-4">
-        <button
-          onClick={handleConnect}
-          disabled={isConnected || isLoading}
-          className={`px-4 py-2 rounded-md font-medium ${
-            isConnected 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : isLoading 
-                ? 'bg-blue-300 cursor-wait' 
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
-          }`}
-        >
-          {isLoading ? 'Connecting...' : 'Connect'}
-        </button>
-        <button
-          onClick={handleDisconnect}
-          disabled={!isConnected || isLoading}
-          className={`px-4 py-2 rounded-md font-medium ${
-            !isConnected 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-red-500 hover:bg-red-600 text-white'
-          }`}
-        >
-          Disconnect
-        </button>
+      <div className="flex flex-col space-y-2">
+        <div className="flex space-x-4 items-center">
+          <button
+            onClick={handleConnect}
+            disabled={isConnected || isLoading}
+            className={`px-4 py-2 rounded-md font-medium ${
+              isConnected 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : isLoading 
+                  ? 'bg-blue-300 cursor-wait' 
+                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}
+          >
+            {isLoading ? 'Connecting...' : 'Connect'}
+          </button>
+          <button
+            onClick={handleDisconnect}
+            disabled={!isConnected || isLoading}
+            className={`px-4 py-2 rounded-md font-medium ${
+              !isConnected 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-red-500 hover:bg-red-600 text-white'
+            }`}
+          >
+            Disconnect
+          </button>
+          
+          {/* Control buttons outside the video feed */}
+          {isConnected && hasControl && (
+            <>
+              <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-md font-medium ml-2">
+                Control Active
+              </div>
+              <button 
+                onClick={() => setHasControl(false)}
+                className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded-md shadow-md text-sm ml-auto"
+              >
+                Release Control
+              </button>
+            </>
+          )}
+        </div>
+        {isConnected && (
+          <div className="text-sm text-gray-500">
+            {hasControl ? (
+              <span className="text-green-500 font-medium">✓ You have control of the machine</span>
+            ) : (
+              <span>Click "Take Control" to interact with the machine</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
