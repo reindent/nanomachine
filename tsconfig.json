@@ -12,6 +12,6 @@
     "sourceMap": true,
     "rootDir": "."
   },
-  "include": ["src/**/*.ts"],
+  "include": ["bridge/**/*.ts", "server/**/*.ts", "client/src/**/*.ts", "client/src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]
 }

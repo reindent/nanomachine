@@ -1,11 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import socketService, { ChatMessage as SocketChatMessage } from '../../services/socketService';
 
-interface Message {
-  id: string;
-  sender: 'user' | 'agent';
-  text: string;
-  timestamp: string;
-}
+// Use the same interface as the socket service
+type Message = SocketChatMessage;
 
 interface ChatInterfaceProps {
   height?: number; // Not used directly but kept for API consistency
@@ -22,50 +19,51 @@ export default function ChatInterface({}: ChatInterfaceProps) {
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Connect to socket service and listen for chat messages
+  useEffect(() => {
+    // Connect to socket
+    socketService.connect();
+    
+    // Listen for connection status
+    const connectionUnsubscribe = socketService.onConnectionStatus((connected) => {
+      setIsConnected(connected);
+    });
+    
+    // Listen for chat messages
+    const chatUnsubscribe = socketService.onChatMessage((message) => {
+      if (message.sender === 'agent') {
+        setIsTyping(false);
+      }
+      setMessages(prevMessages => [...prevMessages, message]);
+    });
+    
+    // Cleanup on unmount
+    return () => {
+      connectionUnsubscribe();
+      chatUnsubscribe();
+    };
+  }, []);
+  
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSendMessage = () => {
-    if (inputText.trim() === '') return;
+    if (inputText.trim() === '' || !isConnected) return;
 
-    // Add user message
-    const newUserMessage: Message = {
-      id: `msg-${Date.now()}`,
-      sender: 'user',
+    // Send message via socket
+    socketService.sendChatMessage({
       text: inputText,
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages([...messages, newUserMessage]);
+      sender: 'user'
+    });
+    
+    // Clear input and show typing indicator
     setInputText('');
     setIsTyping(true);
-
-    // Simulate agent response after a delay
-    setTimeout(() => {
-      const mockResponses = [
-        "I'll handle that for you right away.",
-        "Let me check the VCN connection status.",
-        "I can navigate to that website for you.",
-        "Would you like me to extract data from this page?",
-        "I've completed the requested action.",
-      ];
-      
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
-      
-      const newAgentMessage: Message = {
-        id: `msg-${Date.now()}`,
-        sender: 'agent',
-        text: randomResponse,
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages(prevMessages => [...prevMessages, newAgentMessage]);
-      setIsTyping(false);
-    }, 1500);
   };
 
   const formatTime = (timestamp: string) => {
@@ -130,8 +128,8 @@ export default function ChatInterface({}: ChatInterfaceProps) {
           />
           <button
             type="submit"
-            disabled={inputText.trim() === '' || isTyping}
-            className={`px-2 py-1 rounded-r ${inputText.trim() === '' || isTyping ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
+            disabled={inputText.trim() === '' || isTyping || !isConnected}
+            className={`px-2 py-1 rounded-r ${inputText.trim() === '' || isTyping || !isConnected ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
           >
             <svg
               className="w-4 h-4"

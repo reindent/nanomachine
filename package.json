@@ -6,8 +6,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bridge/index.js",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "ts-node bridge/index.ts",
+    "dev": "concurrently \"npm run dev:bridge\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:bridge": "ts-node bridge/index.ts",
+    "dev:server": "ts-node server/src/index.ts",
     "dev:client": "cd client && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -21,6 +22,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/socket.io": "^3.0.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {

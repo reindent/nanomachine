@@ -1,69 +1,58 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ChatInterface from '../components/common/ChatInterface';
 import NanomachineCanvas from '../components/dashboard/NanomachineCanvas';
 import ActiveTasks, { Task } from '../components/dashboard/ActiveTasks';
 import SystemStatus from '../components/dashboard/SystemStatus';
 import DashboardFooter from '../components/dashboard/DashboardFooter';
+import socketService from '../services/socketService';
 
-// Mock task data
-const mockTasks: Task[] = [
-  {
-    id: 'task-001',
-    status: 'completed' as const,
-    message: 'Successfully completed website navigation task',
-    timestamp: '2025-04-11T08:30:00Z',
-  },
-  {
-    id: 'task-002',
-    status: 'running' as const,
-    progress: 65,
-    message: 'Processing data extraction from target website',
-    timestamp: '2025-04-11T09:15:00Z',
-  },
-  {
-    id: 'task-003',
-    status: 'idle' as const,
-    message: 'Waiting for execution',
-    timestamp: '2025-04-11T09:10:00Z',
-  },
-];
+// Initial empty state for tasks
+const initialTasks: Task[] = [];
 
 export default function DashboardPage() {
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [isLoading, setIsLoading] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<{
+    websocketStatus: 'connected' | 'disconnected',
+    nanomachineClientVersion: string,
+    nanobrowserVersion: string,
+    serverStatus: 'online' | 'offline',
+    activeSessions: number
+  }>({
+    websocketStatus: 'disconnected',
+    nanomachineClientVersion: '',
+    nanobrowserVersion: '',
+    serverStatus: 'offline',
+    activeSessions: 0
+  });
 
-  // Mock function to simulate refreshing tasks
-  const handleRefreshTasks = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      // Update a random task to show some change
-      const updatedTasks = [...tasks];
-      const randomIndex = Math.floor(Math.random() * tasks.length);
-      
-      if (updatedTasks[randomIndex].status === 'running') {
-        const currentProgress = updatedTasks[randomIndex].progress || 0;
-        const newProgress = Math.min(currentProgress + 15, 100);
-        
-        if (newProgress === 100) {
-          updatedTasks[randomIndex] = {
-            ...updatedTasks[randomIndex],
-            message: 'Task completed successfully',
-            status: 'completed' as const,
-            // Remove progress for completed tasks
-            progress: undefined
-          };
-        } else {
-          updatedTasks[randomIndex] = {
-            ...updatedTasks[randomIndex],
-            progress: newProgress,
-            message: `Processing data extraction (${newProgress}% complete)`,
-          };
-        }
-      }
-      
+  // Connect to socket service when component mounts
+  useEffect(() => {
+    // Connect to the socket server
+    socketService.connect();
+    
+    // Register event listeners
+    const taskUnsubscribe = socketService.onTaskUpdate((updatedTasks) => {
       setTasks(updatedTasks);
       setIsLoading(false);
-    }, 1000);
+    });
+    
+    const statusUnsubscribe = socketService.onStatusUpdate((status) => {
+      setSystemStatus(status);
+    });
+    
+    // Cleanup on unmount
+    return () => {
+      taskUnsubscribe();
+      statusUnsubscribe();
+      socketService.disconnect();
+    };
+  }, []);
+  
+  // Function to request task refresh via socket
+  const handleRefreshTasks = () => {
+    setIsLoading(true);
+    socketService.refreshTasks();
   };
 
   return (
@@ -89,11 +78,11 @@ export default function DashboardPage() {
 
         {/* System Status */}
         <SystemStatus 
-          websocketStatus="connected"
-          nanomachineClientVersion="0.1.4"
-          nanobrowserVersion="1.2.0"
-          serverStatus="online"
-          activeSessions={1}
+          websocketStatus={systemStatus.websocketStatus}
+          nanomachineClientVersion={systemStatus.nanomachineClientVersion}
+          nanobrowserVersion={systemStatus.nanobrowserVersion}
+          serverStatus={systemStatus.serverStatus}
+          activeSessions={systemStatus.activeSessions}
         />
         
         {/* Footer */}
