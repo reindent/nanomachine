@@ -6,10 +6,13 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bridge/index.js",
-    "dev": "concurrently \"npm run dev:bridge\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "npm run start:docker && concurrently \"npm run dev:bridge\" \"npm run dev:server\" \"npm run dev:client\"",
     "dev:bridge": "ts-node bridge/index.ts",
     "dev:server": "ts-node server/src/index.ts",
     "dev:client": "cd client && npm run dev",
+    "start:docker": "./scripts/vm/start",
+    "stop:docker": "./scripts/vm/stop",
+    "reinstall:docker": "./scripts/vm/reinstall",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

@@ -1,0 +1,17 @@
+#!/bin/bash
+# Script to install nanobrowser extension in the Docker container
+
+# Run precheck, if fails stop
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+# Stop any existing container
+$SCRIPT_DIR/stop || true
+
+# Uninstall the container
+$SCRIPT_DIR/uninstall || true
+
+# Install the container
+$SCRIPT_DIR/install || exit 1
+
+echo "VM reinstalled successfully"

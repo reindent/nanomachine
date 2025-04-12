@@ -1,0 +1,13 @@
+#!/bin/bash
+# Script to stop Docker container for nanomachine
+
+# Run precheck, if fails stop
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source $SCRIPT_DIR/precheck || exit 1
+
+CONTAINER_NAME="nanomachine-vm"
+
+source $SCRIPT_DIR/stop || true
+source $SCRIPT_DIR/start || exit 1
+
+exit 0

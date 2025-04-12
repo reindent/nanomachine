@@ -1,0 +1,29 @@
+#!/bin/bash
+# Script to wait for Docker container for nanomachine
+
+# Run precheck, if fails stop
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+CONTAINER_NAME="nanomachine-vm"
+
+# Check if container exists
+if [ -z "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
+  echo "Container not found"
+  exit 1
+fi
+
+# Wait for container to initialize
+max_retries=30
+retry_count=0
+while [ -z "$(docker exec $CONTAINER_NAME bash -c 'echo hello' 2>/dev/null)" ]; do
+  if [ $retry_count -ge $max_retries ]; then
+    echo "Container failed to initialize"
+    exit 1
+  fi
+  retry_count=$((retry_count + 1))
+  echo "Waiting for container to initialize... $retry_count/$max_retries"
+  sleep 1
+done
+
+echo "Container initialized successfully"

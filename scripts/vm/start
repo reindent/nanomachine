@@ -1,0 +1,24 @@
+#!/bin/bash
+# Script to start Docker container for nanomachine
+
+# Run precheck, if fails stop
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+CONTAINER_NAME="nanomachine-vm"
+
+# Check if container exists
+if [ -z "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
+  $SCRIPT_DIR/install || exit 1
+fi
+
+# Check if container is running
+if [ -n "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+  echo "VM already running"
+  exit 0
+fi
+
+docker start $CONTAINER_NAME
+
+echo "VM started"
+exit 0

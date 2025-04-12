@@ -1,0 +1,15 @@
+#!/bin/bash
+# Script to check if docker is installed
+
+# Check if we have already checked
+[ -f "/tmp/nanomachine-docker-precheck" ] && exit 0
+
+# Require docker
+if ! command -v docker &> /dev/null; then
+  echo "Docker not found. Please install Docker first!"
+  exit 1
+fi
+
+echo "Precheck performed, docker is installed!"
+touch /tmp/nanomachine-docker-precheck
+exit 0

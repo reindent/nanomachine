@@ -1,0 +1,22 @@
+#!/bin/bash
+# Script to uninstall Docker container for nanomachine
+
+# Run precheck, if fails stop
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+CONTAINER_NAME="nanomachine-vm"
+
+# Check if container exists
+if [ -z "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
+  echo "VM not found"
+  exit 1
+fi
+
+docker stop $CONTAINER_NAME > /dev/null 2>&1
+echo "VM stopped"
+
+# Remove the container  
+docker rm -f $CONTAINER_NAME || true
+
+echo "VM uninstalled"

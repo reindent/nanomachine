@@ -200,7 +200,8 @@ export function createVNCService(io: SocketIOServer) {
       });
       
       // Handle connection events
-      vncClient.on('connect', () => {
+      vncClient.on('connect', (a:any,b:any,c:any) => {
+        if (!vncClient.width || !vncClient.height) return; // RFB has a bug where width/height are not set sometimes
         if (LOG_VNC_CONNECTION) console.log('VNC: Connected to VNC server');
         if (LOG_VNC_CONNECTION) console.log(`VNC: Screen size: ${vncClient.width}x${vncClient.height}`);
         isConnected = true;
