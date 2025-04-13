@@ -1,0 +1,18 @@
+#!/bin/bash
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+CONTAINER_NAME="nanomachine-vm"
+CONTAINER_USER="abc"
+CONTAINER_HOME="/home/abc"
+
+# Kill the existing bridge process
+docker exec $CONTAINER_NAME bash -l -c "pkill -f 'tsx index.ts'"
+
+# Run nanobrowser bridge as a background service
+docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && nohup tsx index.ts > $CONTAINER_HOME/nanomachine.log 2>&1 &"
+
+echo "Bridge started"
+
+exit 0

@@ -12,6 +12,8 @@ import {
 interface Client {
   socket: WebSocket;
   id: string;
+  type?: string;
+  isServer?: boolean;
 }
 
 // Create a simple HTTP server
@@ -32,7 +34,20 @@ interface TaskEvents {
   };
 }
 
+// Store the server client
+let serverClient: Client | null = null;
+let extensionClient: Client | null = null;
+
 const taskEvents: TaskEvents = {};
+
+// Keep Alive Interval for all clients
+const keepAliveInterval = setInterval(() => {
+  clients.forEach(client => {
+    if (client.socket.readyState === WebSocket.OPEN) {
+      client.socket.send(JSON.stringify({ type: 'ping' }));
+    }
+  });
+}, 1000);
 
 // Handle WebSocket connections
 wss.on('connection', (socket: WebSocket, req: http.IncomingMessage) => {
@@ -40,12 +55,12 @@ wss.on('connection', (socket: WebSocket, req: http.IncomingMessage) => {
   console.log(`Client connected from ${req.socket.remoteAddress}:${req.socket.remotePort}`);
   console.log(`Total clients connected: ${clients.length + 1}`);
   console.log('==============================');
-  
+
   // Generate a unique ID for this client
   const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   clients.push({ socket, id: clientId });
-  console.log(`[SERVER] Assigned client ID: ${clientId}`);
-  
+  console.log(`[BRIDGE] Assigned new client ID: ${clientId}`);
+
   // Send a welcome message
   try {
     socket.send(JSON.stringify({
@@ -53,107 +68,67 @@ wss.on('connection', (socket: WebSocket, req: http.IncomingMessage) => {
       message: 'Connected to nanobrowser API bridge',
       clientId
     }));
-    console.log(`[SERVER] Sent welcome message to client ${clientId}`);
+    console.log(`[BRIDGE] Sent welcome message to client ${clientId}`);
   } catch (error) {
-    console.error(`[SERVER] Error sending welcome message:`, error);
+    console.error(`[BRIDGE] Error sending welcome message:`, error);
   }
   
   // Handle messages from clients
   socket.on('message', (message: WebSocket.Data) => {
-    console.log(`[SERVER] Raw message received: ${message.toString().substring(0, 150)}...`);
+    console.log(`[BRIDGE] Raw message received: ${message.toString().substring(0, 150)}...`);
     try {
       const data = JSON.parse(message.toString()) as WebSocketMessage;
-      console.log(`[SERVER] Received message type: ${data.type} from client ${clientId}`);
-      console.log('[SERVER] Message data:', data);
+      console.log(`[BRIDGE] Received message type: ${data.type} from client ${clientId}`);
+      console.log('[BRIDGE] Message data:', data);
       
-      // Handle hello messages
-      if (data.type === 'hello') {
-        console.log(`[SERVER] Client ${clientId} identified as: ${data.client}`);
-        console.log(`[SERVER] Total clients: ${clients.length}`);
-      }
-      
-      // Handle ping messages
-      if (data.type === 'ping') {
-        // console.log(`[SERVER] Received ping from client ${clientId}`);
+      if (data.type === 'hello') { // Handle hello messages
+        console.log(`[BRIDGE] Client ${clientId} identified as: ${data.client}`);
+        console.log(`[BRIDGE] Total clients: ${clients.length}`);
+        
+        // Store the client type for later use
+        const clientIndex = clients.findIndex(c => c.id === clientId);
+        if (clientIndex !== -1 && typeof data.client === 'string') {
+          // Check if this client is the server (has the server flag)
+          const isServer = data.isServer === true;
+          clients[clientIndex] = { ...clients[clientIndex], type: data.client, isServer };
+          console.log(`[BRIDGE] Updated client ${clientId} with type: ${data.client}${isServer ? ' (SERVER)' : ''}`);
+        } else {
+        }
+      } else if (data.type === 'ping') { // Handle ping messages
+        console.log(`[BRIDGE] Received ping from client ${clientId}`);
         try {
           socket.send(JSON.stringify({
             type: 'pong',
             timestamp: Date.now()
           }));
         } catch (error) {
-          console.error(`[SERVER] Error sending pong:`, error);
+          console.error(`[BRIDGE] Error sending pong:`, error);
         }
-      }
-      
-      // Handle task results
-      if (data.type === 'task_result' || data.type === 'task_error') {
-        const taskId = data.taskId as string;
-        console.log(`[SERVER] Received ${data.type} for task ${taskId}`);
-        console.log(`[SERVER] Task result details:`, data);
-        
-        // Mark task as completed or failed
-        if (taskEvents[taskId]) {
-          taskEvents[taskId].endTime = Date.now();
-          taskEvents[taskId].status = data.type === 'task_result' ? 'completed' : 'failed';
-          console.log(`[SERVER] Updated task ${taskId} status to ${taskEvents[taskId].status}`);
-        } else {
-          console.log(`[SERVER] Warning: Received result for unknown task ${taskId}`);
-        }
-      }
-      
-      // Handle agent events (from planner, navigator, validator)
-      if (data.type === 'agent_event') {
-        const agentEvent = data as AgentEventMessage;
-        console.log(`[SERVER] ✨ AGENT EVENT ✨ from ${agentEvent.event.actor}: ${agentEvent.event.state} for task ${agentEvent.taskId}`);
-        console.log(`[SERVER] Event details: ${JSON.stringify(agentEvent.event.data).substring(0, 150)}...`);
-        
-        // Initialize task events array if it doesn't exist
-        if (!taskEvents[agentEvent.taskId]) {
-          taskEvents[agentEvent.taskId] = {
-            events: [],
-            startTime: Date.now()
-          };
-          console.log(`[SERVER] Created new task record for ${agentEvent.taskId}`);
-        }
-        
-        // Store the event
-        taskEvents[agentEvent.taskId].events.push(agentEvent.event);
-        console.log(`[SERVER] Stored event. Total events for task ${agentEvent.taskId}: ${taskEvents[agentEvent.taskId].events.length}`);
-        
-        // If this is a task completion event, mark the task accordingly
-        if (agentEvent.event.state === 'task.ok') {
-          taskEvents[agentEvent.taskId].status = 'completed';
-          taskEvents[agentEvent.taskId].endTime = Date.now();
-          console.log(`[SERVER] Task ${agentEvent.taskId} marked as COMPLETED`);
-        } else if (agentEvent.event.state === 'task.fail') {
-          taskEvents[agentEvent.taskId].status = 'failed';
-          taskEvents[agentEvent.taskId].endTime = Date.now();
-          console.log(`[SERVER] Task ${agentEvent.taskId} marked as FAILED`);
-        } else if (agentEvent.event.state === 'task.cancel') {
-          taskEvents[agentEvent.taskId].status = 'cancelled';
-          taskEvents[agentEvent.taskId].endTime = Date.now();
-          console.log(`[SERVER] Task ${agentEvent.taskId} marked as CANCELLED`);
+      } else { // Anything else coming from client we will forward to server (if connected)
+        const serverClient = clients.find(client => client.isServer === true);
+        if (serverClient && serverClient.socket.readyState === WebSocket.OPEN) {
+          serverClient.socket.send(JSON.stringify(data));
         }
       }
     } catch (error) {
-      console.error('[SERVER] Error parsing WebSocket message:', error);
-      console.error('[SERVER] Raw message that caused error:', message.toString().substring(0, 200));
+      console.error('[BRIDGE] Error parsing WebSocket message:', error);
+      console.error('[BRIDGE] Raw message that caused error:', message.toString().substring(0, 200));
     }
   });
   
   // Handle disconnections
   socket.on('close', (code: number, reason: string) => {
-    console.log(`[SERVER] Client ${clientId} disconnected with code ${code} and reason: ${reason || 'No reason provided'}`);
+    console.log(`[BRIDGE] Client ${clientId} disconnected with code ${code} and reason: ${reason || 'No reason provided'}`);
     const index = clients.findIndex(client => client.socket === socket);
     if (index !== -1) {
       clients.splice(index, 1);
-      console.log(`[SERVER] Removed client from active clients list. Remaining clients: ${clients.length}`);
+      console.log(`[BRIDGE] Removed client from active clients list. Remaining clients: ${clients.length}`);
     }
   });
   
   // Handle errors
   socket.on('error', (error) => {
-    console.error(`[SERVER] WebSocket error for client ${clientId}:`, error);
+    console.error(`[BRIDGE] WebSocket error for client ${clientId}:`, error);
   });
 });
 

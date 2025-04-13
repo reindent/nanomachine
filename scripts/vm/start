@@ -20,5 +20,9 @@ fi
 
 docker start $CONTAINER_NAME
 
+$SCRIPT_DIR/wait || exit 1
+$SCRIPT_DIR/run-bridge || exit 1
+$SCRIPT_DIR/run-nanobrowser || exit 1
+
 echo "VM started"
 exit 0

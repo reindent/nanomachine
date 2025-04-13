@@ -6,10 +6,10 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bridge/index.js",
-    "dev": "npm run start:docker && concurrently \"npm run dev:bridge\" \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:bridge": "ts-node bridge/index.ts",
+    "dev": "npm run start:docker && concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "ts-node server/src/index.ts",
     "dev:client": "cd client && npm run dev",
+    "dev:bridge": "ts-node bridge/index.ts",
     "start:docker": "./scripts/vm/start",
     "stop:docker": "./scripts/vm/stop",
     "reinstall:docker": "./scripts/vm/reinstall",
@@ -28,13 +28,14 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/socket.io": "^3.0.1",
+    "axios": "^1.8.4",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "rfb2": "^0.2.2",
     "sharp": "^0.34.1",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
-    "ws": "^8.16.0"
+    "ws": "^8.18.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",

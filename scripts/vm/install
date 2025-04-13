@@ -7,10 +7,10 @@ $SCRIPT_DIR/precheck || exit 1
 
 BRIDGE_DIR=$SCRIPT_DIR/../../bridge
 
-CONTAINER_HOME="/home/nova"
 CONTAINER_NAME="nanomachine-vm"
-CONTAINER_VNC_PASSWORD="password"
-HOST_VNC_PORT="5900"
+CONTAINER_USER="abc"
+CONTAINER_HOME="/home/abc"
+HOST_VNC_PORT="3201"
 HOST_BRIDGE_PORT="8787"
 
 # Check if container exists, if it does exist exit
@@ -20,7 +20,17 @@ if [ -n "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
 fi
 
 # Start the container
-docker run -d -p $HOST_VNC_PORT:5900 -p $HOST_BRIDGE_PORT:8787 --name $CONTAINER_NAME -e VNC_PASSWORD="$CONTAINER_VNC_PASSWORD" mrcolorrain/vnc-browser:debian
+docker run -d \
+  --name=$CONTAINER_NAME \
+  --security-opt seccomp=unconfined `#optional` \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TZ=Etc/UTC \
+  -p $HOST_VNC_PORT:3000 \
+  -p $HOST_BRIDGE_PORT:8787 \
+  --shm-size="1gb" \
+  --restart unless-stopped \
+  lscr.io/linuxserver/chromium:latest
 
 # Wait for container to initialize
 $SCRIPT_DIR/wait || exit 1
@@ -29,17 +39,7 @@ $SCRIPT_DIR/wait || exit 1
 # ===== BRIDGE INSTALLATION =====
 #################################
 
-# Install node and nvm in the container
-docker exec $CONTAINER_NAME bash -c "apt-get update && apt-get install -y curl"
-docker exec $CONTAINER_NAME bash -l -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash"
-docker exec $CONTAINER_NAME bash -l -c "nvm install 22"
-
-# Install nanomachine bridge for nanobrowser (TODO: find a better way later)
-rm -rf $BRIDGE_DIR/node_modules
-docker exec $CONTAINER_NAME bash -l -c "mkdir -p $CONTAINER_HOME/bridge"
-docker cp $BRIDGE_DIR/. $CONTAINER_NAME:$CONTAINER_HOME/bridge
-docker exec $CONTAINER_NAME bash -l -c "npm i -g tsx"
-docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && npm install"
+$SCRIPT_DIR/install-bridge || exit 1
 
 # ===== END OF BRIDGE INSTALLATION =====
 
@@ -47,53 +47,10 @@ docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && npm install
 # ===== NANOBROWSER INSTALLATION =====
 ######################################
 
-# Install necessary tools for nanobrowser
-echo "Installing necessary tools for nanobrowser..."
-docker exec $CONTAINER_NAME bash -c "apt-get update && apt-get install -y wget unzip"
-
-# Download nanobrowser extension
-echo "Downloading nanobrowser extension..."
-docker exec $CONTAINER_NAME bash -c "cd /tmp && wget https://github.com/nanobrowser/nanobrowser/releases/download/v0.1.4/nanobrowser.zip"
-
-# Extract the extension
-echo "Extracting extension..."
-docker exec $CONTAINER_NAME bash -c "cd /tmp && unzip nanobrowser.zip -d nanobrowser"
-
-# Set up extension directory
-echo "Setting up extension directory..."
-docker exec $CONTAINER_NAME bash -c "mkdir -p $CONTAINER_HOME/extensions && cp -r /tmp/nanobrowser $CONTAINER_HOME/extensions/ && chown -R nova:nova $CONTAINER_HOME/extensions"
-
-# Create a script to launch Chromium with the extension
-echo "Creating launch script..."
-# Create the script content locally first
-cat > temp-launch-script.sh << EOF
-#!/bin/bash
-pkill -f chromium || true
-
-# Launch Chromium with the nanobrowser extension
-/usr/bin/chromium \\
-  --no-sandbox \\
-  --disable-setuid-sandbox \\
-  --disable-extensions-except=$CONTAINER_HOME/extensions/nanobrowser \\
-  --load-extension=$CONTAINER_HOME/extensions/nanobrowser \\
-  --enable-features=ExtensionsToolbarMenu \\
-  "chrome://extensions/" &
-EOF
-
-# Copy the script to the container
-docker cp temp-launch-script.sh $CONTAINER_NAME:$CONTAINER_HOME/launch-chrome.sh
-rm temp-launch-script.sh
-
-# Make the script executable
-docker exec $CONTAINER_NAME bash -c "chmod +x $CONTAINER_HOME/launch-chrome.sh && chown nova:nova $CONTAINER_HOME/launch-chrome.sh"
+$SCRIPT_DIR/install-nanobrowser || exit 1
 
 # ===== END OF NANOBROWSER INSTALLATION =====
 
-# Run nanobrowser bridge as a background service
-docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && nohup tsx index.ts & > /home/nova/nanomachine.log 2>&1"
-
-# Run Chromium with nanobrowser extension
-docker exec $CONTAINER_NAME bash -l -c "$CONTAINER_HOME/launch-chrome.sh > /home/nova/nanobrowser.log 2>&1 &"
 
 echo "VM installed successfully"
 exit 0

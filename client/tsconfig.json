@@ -1,4 +1,5 @@
 {
+  // complain about unused imports
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },

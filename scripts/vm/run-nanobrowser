@@ -1,0 +1,15 @@
+#!/bin/bash
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+CONTAINER_NAME="nanomachine-vm"
+CONTAINER_USER="abc"
+CONTAINER_HOME="/home/abc"
+
+# Run Chromium with nanobrowser extension
+docker exec $CONTAINER_NAME bash -l -c "su - abc -c 'DISPLAY=:1 $CONTAINER_HOME/launch-chrome.sh > /dev/null 2>&1 &'"
+
+echo "Nanobrowser started"
+
+exit 0

@@ -2,16 +2,30 @@ import { io, Socket } from 'socket.io-client';
 import { Task } from '../components/dashboard/ActiveTasks';
 
 // Define types for messages
+export interface AgentEvent {
+  type: 'agent_event';
+  taskId: string;
+  event: {
+    actor: string;
+    state: string;
+    data: {
+      message?: string;
+      [key: string]: any;
+    };
+    timestamp: number;
+  };
+}
+
 export interface ChatMessage {
   id: string;
   text: string;
-  sender: 'user' | 'agent';
+  sender: 'user' | 'agent' | 'system';
   timestamp: string;
 }
 
 export interface ChatMessageRequest {
   text: string;
-  sender: 'user' | 'agent';
+  sender: 'user' | 'agent' | 'system';
 }
 
 export interface SystemStatus {
@@ -32,6 +46,7 @@ class SocketService {
   private statusUpdateCallbacks: ((status: SystemStatus) => void)[] = [];
   private chatMessageCallbacks: ((message: ChatMessage) => void)[] = [];
   private connectionStatusCallbacks: ((connected: boolean) => void)[] = [];
+  private agentEventCallbacks: ((event: AgentEvent) => void)[] = [];
 
   // Initialize socket connection
   connect(): void {
@@ -60,6 +75,13 @@ class SocketService {
     
     this.socket.on('chat:message', (message: ChatMessage) => {
       this.notifyChatMessage(message);
+    });
+    
+    this.socket.on('agent:event', (event: AgentEvent) => {
+      console.log('Agent event received in socket service:', event);
+      console.log(`Event type: ${event.type}, Actor: ${event.event.actor}, State: ${event.event.state}`);
+      this.notifyAgentEvent(event);
+      console.log(`Notified ${this.agentEventCallbacks.length} agent event callbacks`);
     });
   }
   
@@ -120,6 +142,14 @@ class SocketService {
     };
   }
   
+  // Subscribe to agent events
+  onAgentEvent(callback: (event: AgentEvent) => void): () => void {
+    this.agentEventCallbacks.push(callback);
+    return () => {
+      this.agentEventCallbacks = this.agentEventCallbacks.filter(cb => cb !== callback);
+    };
+  }
+  
   // Notification methods
   private notifyTaskUpdate(tasks: Task[]): void {
     this.taskUpdateCallbacks.forEach(callback => callback(tasks));
@@ -135,6 +165,17 @@ class SocketService {
   
   private notifyConnectionStatus(connected: boolean): void {
     this.connectionStatusCallbacks.forEach(callback => callback(connected));
+  }
+  
+  private notifyAgentEvent(event: AgentEvent): void {
+    console.log(`Notifying ${this.agentEventCallbacks.length} callbacks about agent event`);
+    this.agentEventCallbacks.forEach(callback => {
+      try {
+        callback(event);
+      } catch (error) {
+        console.error('Error in agent event callback:', error);
+      }
+    });
   }
 }
 

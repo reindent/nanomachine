@@ -1,0 +1,24 @@
+#!/bin/bash
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+BRIDGE_DIR=$SCRIPT_DIR/../../bridge
+
+CONTAINER_NAME="nanomachine-vm"
+CONTAINER_USER="abc"
+CONTAINER_HOME="/home/abc"
+
+# Install node and nvm in the container
+docker exec $CONTAINER_NAME bash -c "apt-get update && apt-get install -y curl"
+docker exec $CONTAINER_NAME bash -lc 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | PROFILE=/etc/profile bash'
+docker exec $CONTAINER_NAME bash -l -c "nvm install 22"
+
+# Install nanomachine bridge for nanobrowser (TODO: find a better way later)
+rm -rf $BRIDGE_DIR/node_modules
+docker exec $CONTAINER_NAME bash -l -c "mkdir -p $CONTAINER_HOME/bridge"
+docker cp $BRIDGE_DIR/. $CONTAINER_NAME:$CONTAINER_HOME/bridge
+docker exec $CONTAINER_NAME bash -l -c "npm i -g tsx"
+docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && npm install"
+
+exit 0

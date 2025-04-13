@@ -4,8 +4,11 @@ import http from 'http';
 import { Server } from 'socket.io';
 import { router as taskRoutes } from './routes/tasks';
 import { router as statusRoutes } from './routes/status';
+import { router as bridgeRoutes } from './routes/bridge';
 import { Task, SystemStatus } from './types';
+import { AgentEventMessage } from './types/bridge';
 import createVNCService from './vncService';
+import bridgeService from './services/bridgeService';
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +30,7 @@ app.use(express.json());
 // Routes
 app.use('/api/tasks', taskRoutes);
 app.use('/api/status', statusRoutes);
+app.use('/api/bridge', bridgeRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -64,6 +68,47 @@ const mockSystemStatus: SystemStatus = {
   activeSessions: 1
 };
 
+// Set up bridge event forwarding to Socket.IO clients
+bridgeService.onAgentEvent((event: AgentEventMessage) => {
+  console.log(`Forwarding agent event to clients: ${event.event.state}`);
+  console.log('Agent event details:', JSON.stringify(event, null, 2));
+  
+  // Emit the event to all connected clients
+  io.emit('agent:event', event);
+  console.log(`Emitted 'agent:event' to ${io.engine.clientsCount} clients`);
+  
+  // Convert relevant agent events to chat messages
+  if (event.event.state === 'task.complete' || 
+      event.event.state === 'task.progress' || 
+      event.event.state === 'task.error') {
+    const chatMessage = {
+      id: `msg-${Date.now()}`,
+      text: event.event.data.message || event.event.data.details || `${event.event.actor}: ${event.event.state}`,
+      sender: event.event.actor === 'system' ? 'system' : 'agent',
+      timestamp: new Date().toISOString()
+    };
+    io.emit('chat:message', chatMessage);
+    console.log(`Emitted chat message for agent event: ${chatMessage.text}`);
+  }
+});
+
+// Listen for task updates from bridge
+bridgeService.onTaskUpdate((message) => {
+  console.log(`Task update received: ${message.type}`);
+  
+  // For task errors, send a chat message to make sure the user sees it
+  if (message.type === 'task_error') {
+    const errorMessage = {
+      id: `error-${Date.now()}`,
+      text: `Error: ${message.error}`,
+      sender: 'system',
+      timestamp: new Date().toISOString()
+    };
+    io.emit('chat:message', errorMessage);
+    console.log(`Emitted error message: ${errorMessage.text}`);
+  }
+});
+
 // Socket.IO event handlers
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -73,8 +118,9 @@ io.on('connection', (socket) => {
   socket.emit('status:update', mockSystemStatus);
   
   // Handle chat messages
-  socket.on('chat:message', (message) => {
+  socket.on('chat:message', async (message) => {
     console.log(`Received message: ${JSON.stringify(message)}`);
+    
     // Echo the message back to all clients (including sender)
     io.emit('chat:message', {
       id: `msg-${Date.now()}`,
@@ -82,6 +128,24 @@ io.on('connection', (socket) => {
       sender: message.sender,
       timestamp: new Date().toISOString()
     });
+    
+    // If it's a user message, forward it to the bridge
+    if (message.sender === 'user') {
+      try {
+        const result = await bridgeService.sendPrompt(message.text);
+        console.log(`Prompt sent to bridge, task ID: ${result.taskId}`);
+      } catch (error) {
+        console.error('Error forwarding message to bridge:', error);
+        
+        // Notify user of error
+        socket.emit('chat:message', {
+          id: `msg-error-${Date.now()}`,
+          text: 'Sorry, I encountered an error processing your request.',
+          sender: 'agent',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
   });
   
   // Handle task refresh requests

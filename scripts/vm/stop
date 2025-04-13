@@ -3,7 +3,7 @@
 
 # Run precheck, if fails stop
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-source $SCRIPT_DIR/precheck || exit 1
+$SCRIPT_DIR/precheck || exit 1
 
 CONTAINER_NAME="nanomachine-vm"
 

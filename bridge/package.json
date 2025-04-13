@@ -1,0 +1,15 @@
+{
+  "name": "nanomachine-nanobrowser-bridge",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "forever start -c tsx index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "ws": "^8.18.1"
+  }
+}

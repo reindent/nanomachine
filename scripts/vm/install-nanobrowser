@@ -1,0 +1,49 @@
+
+#!/bin/bash
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+$SCRIPT_DIR/precheck || exit 1
+
+BRIDGE_DIR=$SCRIPT_DIR/../../bridge
+
+CONTAINER_NAME="nanomachine-vm"
+CONTAINER_USER="abc"
+CONTAINER_HOME="/home/abc"
+
+# Install necessary tools for nanobrowser
+echo "Installing necessary tools for nanobrowser..."
+docker exec $CONTAINER_NAME bash -c "apt-get update && apt-get install -y wget unzip git"
+
+# Download nanobrowser extension
+echo "Downloading nanobrowser extension..."
+docker exec $CONTAINER_NAME bash -c "cd $CONTAINER_HOME && git clone -b api-bridge https://github.com/reindent/nanobrowser.git"
+
+docker exec $CONTAINER_NAME bash -l -c "npm i -g pnpm"
+docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/nanobrowser && pnpm install && pnpm run build"
+
+# Set up extension directory
+echo "Setting up extension directory..."
+docker exec $CONTAINER_NAME bash -c \
+  "mkdir -p $CONTAINER_HOME/extensions && cp -r $CONTAINER_HOME/nanobrowser/dist $CONTAINER_HOME/extensions/nanobrowser && chown -R $CONTAINER_USER:$CONTAINER_USER $CONTAINER_HOME/extensions"
+
+# Create a script to launch Chromium with the extension
+echo "Creating launch script..."
+# Create the script content locally first
+cat > temp-launch-script.sh << EOF
+#!/bin/bash
+pkill -f chromium || true
+
+# Launch Chromium with the nanobrowser extension
+/usr/bin/chromium \\
+  --disable-extensions-except=$CONTAINER_HOME/extensions/nanobrowser \\
+  --load-extension=$CONTAINER_HOME/extensions/nanobrowser \\
+  --enable-features=ExtensionsToolbarMenu \\
+  "chrome://extensions/" &
+EOF
+
+# Copy the script to the container
+docker cp temp-launch-script.sh $CONTAINER_NAME:$CONTAINER_HOME/launch-chrome.sh
+rm temp-launch-script.sh
+
+# Make the script executable
+docker exec $CONTAINER_NAME bash -c "chmod +x $CONTAINER_HOME/launch-chrome.sh && chown $CONTAINER_USER:$CONTAINER_USER $CONTAINER_HOME/launch-chrome.sh"

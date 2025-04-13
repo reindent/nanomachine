@@ -1,7 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
-import socketService, { ChatMessage as SocketChatMessage } from '../../services/socketService';
+import socketService, { ChatMessage as SocketChatMessage, AgentEvent } from '../../services/socketService';
 
-// Use the same interface as the socket service
+// Define types for agent event display
+interface AgentEventDisplay {
+  id: string;
+  taskId: string;
+  actor: string;
+  state: string;
+  timestamp: number;
+  details?: string;
+  step?: number;
+  maxSteps?: number;
+}
+
+// Use the same interface as the socket service but extend it
 type Message = SocketChatMessage;
 
 interface ChatInterfaceProps {
@@ -17,10 +29,13 @@ export default function ChatInterface({}: ChatInterfaceProps) {
       timestamp: new Date().toISOString(),
     },
   ]);
+  const [agentEvents, setAgentEvents] = useState<AgentEventDisplay[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [showEvents, setShowEvents] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const eventsEndRef = useRef<HTMLDivElement>(null);
 
   // Connect to socket service and listen for chat messages
   useEffect(() => {
@@ -40,10 +55,52 @@ export default function ChatInterface({}: ChatInterfaceProps) {
       setMessages(prevMessages => [...prevMessages, message]);
     });
     
+    // Listen for agent events
+    const agentEventUnsubscribe = socketService.onAgentEvent((event: AgentEvent) => {
+      console.log('Agent event in ChatInterface:', event);
+      console.log(`Event details - TaskID: ${event.taskId}, Actor: ${event.event.actor}, State: ${event.event.state}`);
+      
+      // Add the event to our events display list
+      try {
+        const newEvent: AgentEventDisplay = {
+          id: `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          taskId: event.taskId,
+          actor: event.event.actor,
+          state: event.event.state,
+          timestamp: event.event.timestamp,
+          details: event.event.data?.details,
+          step: event.event.data?.step,
+          maxSteps: event.event.data?.maxSteps
+        };
+        
+        console.log('Created new event display object:', newEvent);
+        setAgentEvents(prev => {
+          const updated = [...prev, newEvent];
+          console.log(`Updated agent events array, now has ${updated.length} events`);
+          return updated;
+        });
+        
+        // For certain events, we might want to add a chat message too
+        if (
+          event.event.state === 'task.complete' || 
+          event.event.state === 'task.error' || 
+          event.event.state === 'task.start' ||
+          (event.event.state === 'task.progress' && event.event.data?.details)
+        ) {
+          // These messages will come from the server, so we don't need to add them here
+          // The server converts relevant agent events to chat messages
+          console.log('This event type would generate a chat message on the server');
+        }
+      } catch (error) {
+        console.error('Error processing agent event:', error);
+      }
+    });
+    
     // Cleanup on unmount
     return () => {
       connectionUnsubscribe();
       chatUnsubscribe();
+      agentEventUnsubscribe();
     };
   }, []);
   
@@ -51,6 +108,13 @@ export default function ChatInterface({}: ChatInterfaceProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+  
+  // Auto-scroll to bottom when agent events change
+  useEffect(() => {
+    if (showEvents && eventsEndRef.current) {
+      eventsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [agentEvents, showEvents]);
 
   const handleSendMessage = () => {
     if (inputText.trim() === '' || !isConnected) return;
@@ -71,8 +135,29 @@ export default function ChatInterface({}: ChatInterfaceProps) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Format agent event timestamp
+  const formatEventTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+  
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
+      {/* Control bar */}
+      <div className="flex justify-between items-center px-2 py-1 bg-gray-100 border-b border-gray-200">
+        <div className="text-xs font-medium text-gray-600">
+          {isConnected ? 
+            <span className="text-green-600">● Connected</span> : 
+            <span className="text-red-600">● Disconnected</span>}
+        </div>
+        <button 
+          onClick={() => setShowEvents(!showEvents)}
+          className="text-xs text-gray-600 px-2 py-0.5 bg-gray-200 hover:bg-gray-300 rounded"
+        >
+          {showEvents ? 'Hide Events' : 'Show Events'}
+        </button>
+      </div>
+      
       {/* Messages container */}
       <div className="flex-1 overflow-y-auto p-2 pb-12 flex flex-col">
         {messages.map((message) => (
@@ -84,7 +169,9 @@ export default function ChatInterface({}: ChatInterfaceProps) {
               className={`max-w-[85%] rounded px-2 py-1 ${
                 message.sender === 'user'
                   ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-800'
+                  : message.sender === 'system'
+                    ? 'bg-yellow-100 border border-yellow-300 text-gray-800'
+                    : 'bg-gray-200 text-gray-800'
               }`}
             >
               <div className="text-sm">{message.text}</div>
@@ -107,6 +194,36 @@ export default function ChatInterface({}: ChatInterfaceProps) {
           </div>
         )}
         
+        {/* Agent events display */}
+        {showEvents && agentEvents.length > 0 && (
+          <div className="my-2 p-2 bg-gray-50 rounded border border-gray-200 text-xs">
+            <div className="font-medium text-gray-700 mb-1">Agent Events:</div>
+            <div className="max-h-32 overflow-y-auto">
+              {agentEvents.slice(-10).map((event) => (
+                <div key={event.id} className="mb-1 pb-1 border-b border-gray-100 last:border-0">
+                  <div className="flex justify-between">
+                    <span className="font-medium">{event.actor}</span>
+                    <span className="text-gray-500">{formatEventTime(event.timestamp)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-600">{event.state}</span>
+                    {event.step !== undefined && event.maxSteps !== undefined && (
+                      <span className="text-gray-600">
+                        Step {event.step}/{event.maxSteps}
+                      </span>
+                    )}
+                  </div>
+                  {event.details && (
+                    <div className="text-gray-700 mt-0.5 italic">{event.details}</div>
+                  )}
+                </div>
+              ))}
+              {/* Reference for auto-scrolling */}
+              <div ref={eventsEndRef} />
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
       
@@ -124,7 +241,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Type your message..."
-            className="flex-grow border border-gray-300 rounded-l text-sm px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-grow border border-gray-300 rounded-l text-black text-sm px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           <button
             type="submit"
