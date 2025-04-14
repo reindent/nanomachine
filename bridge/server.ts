@@ -1,28 +1,33 @@
-// src/server.ts
-import * as http from 'http';
+import express from 'express';
+import http from 'http';
 import * as WebSocket from 'ws';
-import { IncomingMessage, ServerResponse } from 'http';
+import { IncomingMessage } from 'http';
 import { 
   PromptRequest, 
   WebSocketMessage, 
   ExternalTaskMessage,
-  AgentEventMessage
+  AgentEventMessage,
+  LLMProviderMessage,
+  AgentModelMessage
 } from './types';
 
+// Create Express app and HTTP server
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// Set up CORS and JSON parsing
+app.use(express.json());
+
+// Track connected clients
 interface Client {
   socket: WebSocket;
   id: string;
-  type?: string;
-  isServer?: boolean;
+  name: string;
 }
 
-// Create a simple HTTP server
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8787;
-const server = http.createServer();
-const wss = new WebSocket.Server({ server });
-
-// Store connected clients
-const clients: Client[] = [];
+let nanobrowserClient: Client | null = null;
+let nanomachineClient: Client | null = null;
 
 // Store active tasks and their events
 interface TaskEvents {
@@ -34,243 +39,308 @@ interface TaskEvents {
   };
 }
 
-// Store the server client
-let serverClient: Client | null = null;
-let extensionClient: Client | null = null;
-
 const taskEvents: TaskEvents = {};
 
-// Keep Alive Interval for all clients
-const keepAliveInterval = setInterval(() => {
-  clients.forEach(client => {
-    if (client.socket.readyState === WebSocket.OPEN) {
-      client.socket.send(JSON.stringify({ type: 'ping' }));
-    }
-  });
-}, 1000);
+// Keep Alive Interval
+setInterval(() => {
+  // Send ping to nanobrowser client
+  if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+    nanobrowserClient.socket.send(JSON.stringify({ type: 'ping' }));
+  }
+}, 1000); // Every second
 
 // Handle WebSocket connections
-wss.on('connection', (socket: WebSocket, req: http.IncomingMessage) => {
-  console.log('=== NEW CLIENT CONNECTION ===');
-  console.log(`Client connected from ${req.socket.remoteAddress}:${req.socket.remotePort}`);
-  console.log(`Total clients connected: ${clients.length + 1}`);
-  console.log('==============================');
-
+wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
+  console.log(`New client connected from ${req.socket.remoteAddress}:${req.socket.remotePort}`);
+  
   // Generate a unique ID for this client
-  const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  clients.push({ socket, id: clientId });
-  console.log(`[BRIDGE] Assigned new client ID: ${clientId}`);
-
-  // Send a welcome message
-  try {
-    socket.send(JSON.stringify({
-      type: 'welcome',
-      message: 'Connected to nanobrowser API bridge',
-      clientId
-    }));
-    console.log(`[BRIDGE] Sent welcome message to client ${clientId}`);
-  } catch (error) {
-    console.error(`[BRIDGE] Error sending welcome message:`, error);
-  }
+  const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   
   // Handle messages from clients
   socket.on('message', (message: WebSocket.Data) => {
-    console.log(`[BRIDGE] Raw message received: ${message.toString().substring(0, 150)}...`);
     try {
       const data = JSON.parse(message.toString()) as WebSocketMessage;
-      console.log(`[BRIDGE] Received message type: ${data.type} from client ${clientId}`);
-      console.log('[BRIDGE] Message data:', data);
       
-      if (data.type === 'hello') { // Handle hello messages
-        console.log(`[BRIDGE] Client ${clientId} identified as: ${data.client}`);
-        console.log(`[BRIDGE] Total clients: ${clients.length}`);
-        
-        // Store the client type for later use
-        const clientIndex = clients.findIndex(c => c.id === clientId);
-        if (clientIndex !== -1 && typeof data.client === 'string') {
-          // Check if this client is the server (has the server flag)
-          const isServer = data.isServer === true;
-          clients[clientIndex] = { ...clients[clientIndex], type: data.client, isServer };
-          console.log(`[BRIDGE] Updated client ${clientId} with type: ${data.client}${isServer ? ' (SERVER)' : ''}`);
-        } else {
-        }
-      } else if (data.type === 'ping') { // Handle ping messages
-        console.log(`[BRIDGE] Received ping from client ${clientId}`);
-        try {
-          socket.send(JSON.stringify({
-            type: 'pong',
-            timestamp: Date.now()
-          }));
-        } catch (error) {
-          console.error(`[BRIDGE] Error sending pong:`, error);
-        }
-      } else { // Anything else coming from client we will forward to server (if connected)
-        const serverClient = clients.find(client => client.isServer === true);
-        if (serverClient && serverClient.socket.readyState === WebSocket.OPEN) {
-          serverClient.socket.send(JSON.stringify(data));
-        }
+      // Skip logging for ping/pong messages
+      if (data.type !== 'ping' && data.type !== 'pong') {
+        console.log(`Received message type: ${data.type}`);
       }
+      
+      // Handle ping/pong messages
+      if (data.type === 'ping') {
+        socket.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+      if (data.type === 'pong') return;
+      
+      // Handle hello messages to identify clients
+      if (data.type === 'hello') {
+        const name = data.name as string;
+        
+        if (name === 'nanobrowser-extension') {
+          console.log('Nanobrowser extension connected');
+          nanobrowserClient = { socket, id: clientId, name };
+        } else if (name === 'nanomachine-service') {
+          console.log('Nanomachine service connected');
+          nanomachineClient = { socket, id: clientId, name };
+        } else {
+          console.error(`Invalid client name: ${name}`);
+          socket.close();
+          return;
+        }
+        
+        // Send welcome message
+        socket.send(JSON.stringify({
+          type: 'welcome',
+          message: 'Connected to bridge'
+        }));
+        return;
+      }
+      
+      // Handle agent events (from nanobrowser to nanomachine)
+      if (data.type === 'agent_event') {
+        // Store event
+        const event = data as AgentEventMessage;
+        const taskId = event.taskId;
+        
+        if (!taskEvents[taskId]) {
+          taskEvents[taskId] = {
+            events: [],
+            startTime: Date.now()
+          };
+        }
+        
+        taskEvents[taskId].events.push(event.event);
+        
+        // Update task status based on event state
+        if (event.event.state === 'task.ok') {
+          taskEvents[taskId].status = 'completed';
+          taskEvents[taskId].endTime = Date.now();
+        } else if (event.event.state === 'task.error') {
+          taskEvents[taskId].status = 'failed';
+          taskEvents[taskId].endTime = Date.now();
+        } else if (event.event.state === 'task.cancel') {
+          taskEvents[taskId].status = 'cancelled';
+          taskEvents[taskId].endTime = Date.now();
+        }
+        
+        // Forward to nanomachine
+        if (nanomachineClient && nanomachineClient.socket.readyState === WebSocket.OPEN) {
+          nanomachineClient.socket.send(message.toString());
+        }
+        return;
+      }
+      
+      // Handle task results (from nanobrowser to nanomachine)
+      if (data.type === 'task_result' || data.type === 'task_error') {
+        if (nanomachineClient && nanomachineClient.socket.readyState === WebSocket.OPEN) {
+          nanomachineClient.socket.send(message.toString());
+        }
+        return;
+      }
+      
+      // Handle external tasks (from nanomachine to nanobrowser)
+      if (data.type === 'external_task') {
+        if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+          nanobrowserClient.socket.send(message.toString());
+        }
+        return;
+      }
+      
+      // Handle provider configuration (from nanomachine to nanobrowser)
+      if (data.type === 'llm_provider') {
+        if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+          nanobrowserClient.socket.send(message.toString());
+        }
+        return;
+      }
+      
+      // Handle agent model configuration (from nanomachine to nanobrowser)
+      if (data.type === 'agent_model') {
+        if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+          nanobrowserClient.socket.send(message.toString());
+        }
+        return;
+      }
+      
+      // Handle provider/model results (from nanobrowser to nanomachine)
+      if (data.type === 'llm_provider_result' || data.type === 'agent_model_result' ||
+          data.type === 'llm_provider_error' || data.type === 'agent_model_error') {
+        if (nanomachineClient && nanomachineClient.socket.readyState === WebSocket.OPEN) {
+          nanomachineClient.socket.send(message.toString());
+        }
+        return;
+      }
+      
+      console.log(`Unhandled message type: ${data.type}`);
     } catch (error) {
-      console.error('[BRIDGE] Error parsing WebSocket message:', error);
-      console.error('[BRIDGE] Raw message that caused error:', message.toString().substring(0, 200));
+      console.error('Error parsing WebSocket message:', error);
     }
   });
   
   // Handle disconnections
-  socket.on('close', (code: number, reason: string) => {
-    console.log(`[BRIDGE] Client ${clientId} disconnected with code ${code} and reason: ${reason || 'No reason provided'}`);
-    const index = clients.findIndex(client => client.socket === socket);
-    if (index !== -1) {
-      clients.splice(index, 1);
-      console.log(`[BRIDGE] Removed client from active clients list. Remaining clients: ${clients.length}`);
+  socket.on('close', () => {
+    if (nanobrowserClient && nanobrowserClient.socket === socket) {
+      console.log('Nanobrowser extension disconnected');
+      nanobrowserClient = null;
+    } else if (nanomachineClient && nanomachineClient.socket === socket) {
+      console.log('Nanomachine service disconnected');
+      nanomachineClient = null;
     }
   });
   
   // Handle errors
   socket.on('error', (error) => {
-    console.error(`[BRIDGE] WebSocket error for client ${clientId}:`, error);
+    console.error('WebSocket error:', error);
   });
 });
 
-// Handle HTTP requests
-server.on('request', (req: IncomingMessage, res: ServerResponse) => {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    nanobrowserConnected: nanobrowserClient !== null && nanobrowserClient.socket.readyState === WebSocket.OPEN,
+    nanomachineConnected: nanomachineClient !== null && nanomachineClient.socket.readyState === WebSocket.OPEN,
+    activeTasks: Object.keys(taskEvents).filter(taskId => !taskEvents[taskId].endTime).length,
+    completedTasks: Object.keys(taskEvents).filter(taskId => taskEvents[taskId].status === 'completed').length
+  });
+});
+
+// Task events endpoint
+app.get('/task/:taskId', (req, res) => {
+  const taskId = req.params.taskId;
   
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
+  if (taskEvents[taskId]) {
+    res.status(200).json(taskEvents[taskId]);
+  } else {
+    res.status(404).json({ error: 'Task not found' });
+  }
+});
+
+// List tasks endpoint
+app.get('/tasks', (req, res) => {
+  const taskSummaries = Object.entries(taskEvents).map(([taskId, task]) => ({
+    taskId,
+    startTime: task.startTime,
+    endTime: task.endTime,
+    status: task.status,
+    eventCount: task.events.length
+  }));
+  
+  res.status(200).json(taskSummaries);
+});
+
+// Prompt endpoint
+app.post('/prompt', (req, res) => {
+  const data = req.body as PromptRequest;
+  
+  // Validate request
+  if (!data.task) {
+    res.status(400).json({ error: 'Missing task parameter' });
     return;
   }
   
-  // Health check endpoint
-  if (req.method === 'GET' && req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ok',
-      clients: clients.length,
-      activeTasks: Object.keys(taskEvents).filter(taskId => !taskEvents[taskId].endTime).length,
-      completedTasks: Object.keys(taskEvents).filter(taskId => taskEvents[taskId].status === 'completed').length
-    }));
-    return;
-  }
+  // Generate a task ID if not provided
+  const taskId = data.taskId || `task-${Date.now()}`;
   
-  // Task events endpoint
-  if (req.method === 'GET' && req.url?.startsWith('/task/')) {
-    const taskId = req.url.substring(6); // Remove '/task/' prefix
+  // Forward the prompt to nanobrowser client
+  const message: ExternalTaskMessage = {
+    type: 'external_task',
+    task: data.task,
+    taskId,
+    tabId: data.tabId
+  };
+  
+  if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+    nanobrowserClient.socket.send(JSON.stringify(message));
     
-    if (taskEvents[taskId]) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(taskEvents[taskId]));
-    } else {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Task not found' }));
-    }
-    return;
-  }
-  
-  // List tasks endpoint
-  if (req.method === 'GET' && req.url === '/tasks') {
-    const taskSummaries = Object.entries(taskEvents).map(([taskId, task]) => ({
-      taskId,
-      startTime: task.startTime,
-      endTime: task.endTime,
-      status: task.status,
-      eventCount: task.events.length
-    }));
-    
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(taskSummaries));
-    return;
-  }
-  
-  // Prompt endpoint
-  if (req.method === 'POST' && req.url === '/prompt') {
-    let body = '';
-    
-    req.on('data', (chunk) => {
-      body += chunk.toString();
+    // Send response
+    res.status(200).json({
+      status: 'accepted',
+      message: 'Prompt forwarded to extension',
+      taskId
     });
     
-    req.on('end', () => {
-      try {
-        const data = JSON.parse(body) as PromptRequest;
-        
-        // Validate request
-        if (!data.task) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Missing task parameter' }));
-          return;
-        }
-        
-        // Generate a task ID if not provided
-        const taskId = data.taskId || `task-${Date.now()}`;
-        
-        // Forward the prompt to all connected clients
-        const message: ExternalTaskMessage = {
-          type: 'external_task',
-          task: data.task,
-          taskId,
-          tabId: data.tabId
-        };
-        
-        let clientCount = 0;
-        clients.forEach(client => {
-          if (client.socket.readyState === WebSocket.OPEN) {
-            client.socket.send(JSON.stringify(message));
-            clientCount++;
-          }
-        });
-        
-        if (clientCount === 0) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            error: 'No extension clients connected',
-            status: 'error'
-          }));
-          return;
-        }
-        
-        // Send response
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          status: 'accepted',
-          message: 'Prompt forwarded to extension',
-          taskId
-        }));
-        
-        console.log(`Forwarded prompt to ${clientCount} clients: ${data.task}`);
-      } catch (error) {
-        console.error('Error processing request:', error);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid request format' }));
-      }
+    console.log(`Forwarded prompt to nanobrowser: ${data.task}`);
+  } else {
+    res.status(503).json({
+      error: 'Nanobrowser extension not connected',
+      status: 'error'
     });
-    
+  }
+});
+
+// Provider configuration endpoint
+app.post('/provider', (req, res) => {
+  const data = req.body as LLMProviderMessage;
+  
+  // Validate request
+  if (!data.provider || !data.action) {
+    res.status(400).json({ error: 'Missing provider or action parameter' });
     return;
   }
   
-  // Not found
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
+  if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+    nanobrowserClient.socket.send(JSON.stringify(data));
+    
+    // Send response
+    res.status(200).json({
+      status: 'accepted',
+      message: `Provider ${data.action} request forwarded to extension`,
+      providerId: data.provider.id
+    });
+    
+    console.log(`Forwarded provider ${data.action} for ${data.provider.id} to nanobrowser`);
+  } else {
+    res.status(503).json({
+      error: 'Nanobrowser extension not connected',
+      status: 'error'
+    });
+  }
+});
+
+// Agent model configuration endpoint
+app.post('/model', (req, res) => {
+  const data = req.body as AgentModelMessage;
+  
+  // Validate request
+  if (!data.agent || !data.config) {
+    res.status(400).json({ error: 'Missing agent or config parameter' });
+    return;
+  }
+  
+  if (nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+    nanobrowserClient.socket.send(JSON.stringify(data));
+    
+    // Send response
+    res.status(200).json({
+      status: 'accepted',
+      message: 'Agent model configuration forwarded to extension',
+      agent: data.agent
+    });
+    
+    console.log(`Forwarded model config for agent ${data.agent} to nanobrowser`);
+  } else {
+    res.status(503).json({
+      error: 'Nanobrowser extension not connected',
+      status: 'error'
+    });
+  }
+});
+
+// Not found handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
 // Start the server
-export function startServer(): void {
-  server.listen(PORT, () => {
+export function startServer(port: number = 8787): void {
+  server.listen(port, () => {
     console.log('===============================================');
-    console.log(`Nanobrowser API server running on port ${PORT}`);
-    console.log(`WebSocket server running on ws://localhost:${PORT}`);
-    console.log(`HTTP API available at http://localhost:${PORT}/prompt`);
-    console.log('Ready to receive agent events from nanobrowser extension');
+    console.log(`Bridge server running on port ${port}`);
+    console.log(`WebSocket server running on ws://localhost:${port}`);
+    console.log(`HTTP API available at http://localhost:${port}/prompt`);
+    console.log('Ready to connect nanobrowser and nanomachine');
     console.log('===============================================');
   });
-}
-
-// If this file is run directly, start the server
-if (require.main === module) {
-  startServer();
 }

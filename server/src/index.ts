@@ -68,6 +68,9 @@ const mockSystemStatus: SystemStatus = {
   activeSessions: 1
 };
 
+// Store the last meaningful response for each task
+const lastResponses: Record<string, string> = {};
+
 // Set up bridge event forwarding to Socket.IO clients
 bridgeService.onAgentEvent((event: AgentEventMessage) => {
   console.log(`Forwarding agent event to clients: ${event.event.state}`);
@@ -76,6 +79,14 @@ bridgeService.onAgentEvent((event: AgentEventMessage) => {
   // Emit the event to all connected clients
   io.emit('agent:event', event);
   console.log(`Emitted 'agent:event' to ${io.engine.clientsCount} clients`);
+  
+  // Store meaningful responses from validator or planner
+  if ((event.event.actor === 'validator' || event.event.actor === 'planner') && 
+      event.event.state === 'step.ok' && 
+      event.event.data.details) {
+    lastResponses[event.taskId] = event.event.data.details;
+    console.log(`Stored last response for task ${event.taskId}: ${event.event.data.details}`);
+  }
   
   // Convert relevant agent events to chat messages
   if (event.event.state === 'task.complete' || 
@@ -89,6 +100,24 @@ bridgeService.onAgentEvent((event: AgentEventMessage) => {
     };
     io.emit('chat:message', chatMessage);
     console.log(`Emitted chat message for agent event: ${chatMessage.text}`);
+  }
+  
+  // When task is completed (task.ok), send the last meaningful response as a chat message
+  if (event.event.state === 'task.ok') {
+    const lastResponse = lastResponses[event.taskId];
+    if (lastResponse) {
+      const chatMessage = {
+        id: `msg-${Date.now()}`,
+        text: lastResponse,
+        sender: 'agent',
+        timestamp: new Date().toISOString()
+      };
+      io.emit('chat:message', chatMessage);
+      console.log(`Task completed. Emitted final response: ${lastResponse}`);
+      
+      // Clean up stored response
+      delete lastResponses[event.taskId];
+    }
   }
 });
 

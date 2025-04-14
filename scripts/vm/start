@@ -10,10 +10,11 @@ CONTAINER_NAME="nanomachine-vm"
 # Check if container exists
 if [ -z "$(docker ps -a -q -f name=$CONTAINER_NAME)" ]; then
   $SCRIPT_DIR/install || exit 1
+  BYPASS_RUN_CHECK=true
 fi
 
 # Check if container is running
-if [ -n "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
+if [ -z "$BYPASS_RUN_CHECK" ] && [ -n "$(docker ps -q -f name=$CONTAINER_NAME)" ]; then
   echo "VM already running"
   exit 0
 fi
@@ -21,8 +22,7 @@ fi
 docker start $CONTAINER_NAME
 
 $SCRIPT_DIR/wait || exit 1
-$SCRIPT_DIR/run-bridge || exit 1
-$SCRIPT_DIR/run-nanobrowser || exit 1
+$SCRIPT_DIR/run || exit 1
 
 echo "VM started"
 exit 0

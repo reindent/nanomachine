@@ -21,6 +21,24 @@ interface AgentEventMessage {
 /**
  * Service to communicate with the bridge application running in the Docker container
  */
+// Import our own types for model configuration
+interface LLMProvider {
+  id: string;         // Provider ID (e.g., 'openai', 'anthropic', or custom ID)
+  name?: string;      // Display name
+  apiKey: string;     // API key
+  baseUrl?: string;   // Optional base URL for custom providers
+  modelNames: string[]; // Available models
+}
+
+interface AgentModelConfig {
+  provider: string;   // Reference to provider ID
+  modelName: string;  // Selected model name
+  parameters: {
+    temperature: number;
+    topP: number;
+  };
+}
+
 class BridgeService {
   private ws: WebSocket | null = null;
   private eventEmitter = new EventEmitter();
@@ -51,18 +69,21 @@ class BridgeService {
         // Send a hello message
         this.sendMessage({
           type: 'hello',
-          client: 'nanomachine-server',
-          isServer: true,
+          name: 'nanomachine-service',
         });
       });
       
       this.ws.on('message', (data) => {
         try {
           const message = JSON.parse(data.toString());
-          if (message.type !== 'ping') {
-            console.log(`Received message from bridge: ${message.type}`);
+          // Handle ping/pong (silently)
+          if (message.type === 'ping') {
+            this.ws?.send(JSON.stringify({ type: 'pong' }));
+            return;
           }
+          if (message.type === 'pong') return;
           
+          console.log(`Received message from bridge: ${message.type}`);
           // Forward agent events to listeners
           if (message.type === 'agent_event') {
             this.eventEmitter.emit('agent_event', message);
@@ -92,11 +113,6 @@ class BridgeService {
               console.log('Converting task_error to agent_event:', JSON.stringify(errorEvent, null, 2));
               this.eventEmitter.emit('agent_event', errorEvent);
             }
-          }
-          
-          // Handle welcome message
-          if (message.type === 'welcome') {
-            console.log(`Received welcome from bridge: ${message.message}`);
           }
         } catch (error) {
           console.error('Error parsing bridge message:', error);
@@ -187,6 +203,42 @@ class BridgeService {
       this.eventEmitter.off('connected', () => callback(true));
       this.eventEmitter.off('disconnected', () => callback(false));
     };
+  }
+  
+  /**
+   * Update or create a provider configuration
+   */
+  async updateProvider(provider: LLMProvider, action: 'create' | 'update' | 'delete' = 'update'): Promise<any> {
+    try {
+      console.log(`Sending provider ${action} for ${provider.id} to bridge`);
+      const response = await axios.post(`${this.bridgeUrl}/provider`, {
+        type: 'llm_provider',
+        action,
+        provider
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error ${action} provider:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update model configuration for an agent
+   */
+  async updateAgentModel(agent: string, config: AgentModelConfig): Promise<any> {
+    try {
+      console.log(`Sending model config update for agent ${agent} to bridge`);
+      const response = await axios.post(`${this.bridgeUrl}/model`, {
+        type: 'agent_model',
+        agent,
+        config
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating agent model:', error);
+      throw error;
+    }
   }
   
   /**

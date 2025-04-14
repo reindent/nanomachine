@@ -1,5 +1,5 @@
 // src/index.ts
-// Main entry point for the nanobrowser API bridge
+// Main entry point for the nanomachine<->nanobrowser API bridge
 
 import { startServer } from './server';
 

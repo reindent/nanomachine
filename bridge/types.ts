@@ -59,3 +59,32 @@ export interface AgentEventMessage extends WebSocketMessage {
     data: AgentEventData;
   };
 }
+
+export interface LLMProvider {
+  id: string;         // Provider ID (e.g., 'openai', 'anthropic', or custom ID)
+  name?: string;      // Display name
+  apiKey: string;     // API key
+  baseUrl?: string;   // Optional base URL for custom providers
+  modelNames: string[]; // Available models
+}
+
+export interface AgentModelConfig {
+  provider: string;   // Reference to provider ID
+  modelName: string;  // Selected model name
+  parameters: {
+    temperature: number;
+    topP: number;
+  };
+}
+
+export interface LLMProviderMessage extends WebSocketMessage {
+  type: 'llm_provider';
+  action: 'create' | 'update' | 'delete';
+  provider: LLMProvider;
+}
+
+export interface AgentModelMessage extends WebSocketMessage {
+  type: 'agent_model';
+  agent: string;      // 'planner', 'navigator', or 'validator'
+  config: AgentModelConfig;
+}

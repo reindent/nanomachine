@@ -1,4 +1,5 @@
 #!/bin/bash
+# Script to run nanomachine bridge
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 $SCRIPT_DIR/precheck || exit 1
