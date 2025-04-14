@@ -1,7 +1,7 @@
 {
   "name": "nanomachine",
   "version": "1.0.0",
-  "description": "API bridge for nanobrowser extension",
+  "description": "Virtual Machine AI Agent",
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
