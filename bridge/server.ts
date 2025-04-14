@@ -80,9 +80,17 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
         if (name === 'nanobrowser-extension') {
           console.log('Nanobrowser extension connected');
           nanobrowserClient = { socket, id: clientId, name };
+          // notify nanomachine that nanobrowser is ready
+          if(nanomachineClient && nanomachineClient.socket.readyState === WebSocket.OPEN) {
+            nanomachineClient.socket.send(JSON.stringify({ type: 'nanobrowser', ready: true }));
+          }
         } else if (name === 'nanomachine-service') {
           console.log('Nanomachine service connected');
           nanomachineClient = { socket, id: clientId, name };
+          // notify nanomachine if nanobrowser is ready
+          if(nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'nanobrowser', ready: true }));
+          }
         } else {
           console.error(`Invalid client name: ${name}`);
           socket.close();

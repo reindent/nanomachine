@@ -1,6 +1,12 @@
+import 'dotenv/config';
 import WebSocket from 'ws';
 import axios from 'axios';
 import { EventEmitter } from 'events';
+import { Task, Message } from '../models';
+import { configureNanobrowser } from './nanobrowserService';
+
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:8787';
+
 /**
  * Agent event message interface
  */
@@ -46,7 +52,7 @@ class BridgeService {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnected = false;
   
-  constructor(bridgeUrl = 'http://localhost:8787') {
+  constructor(bridgeUrl = BRIDGE_URL) {
     this.bridgeUrl = bridgeUrl;
     this.connect();
   }
@@ -71,6 +77,9 @@ class BridgeService {
           type: 'hello',
           name: 'nanomachine-service',
         });
+
+        // Configure Nanobrowser Provider and Models
+
       });
       
       this.ws.on('message', (data) => {
@@ -84,6 +93,13 @@ class BridgeService {
           if (message.type === 'pong') return;
           
           console.log(`Received message from bridge: ${message.type}`);
+
+          // Handle nanobrowser ready message
+          if (message.type === 'nanobrowser' && message.ready === true) {
+            configureNanobrowser();
+            console.log('Nanobrowser is ready and configured.');
+          }
+
           // Forward agent events to listeners
           if (message.type === 'agent_event') {
             this.eventEmitter.emit('agent_event', message);
