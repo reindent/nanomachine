@@ -1,17 +1,22 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import ChatInterface from '../components/common/ChatInterface';
 import NanomachineCanvas from '../components/dashboard/NanomachineCanvas';
 import ActiveTasks, { Task } from '../components/dashboard/ActiveTasks';
 import SystemStatus from '../components/dashboard/SystemStatus';
 import DashboardFooter from '../components/dashboard/DashboardFooter';
+import ChatList from '../components/chat/ChatList';
 import socketService from '../services/socketService';
 
 // Initial empty state for tasks
 const initialTasks: Task[] = [];
 
 export default function DashboardPage() {
+  const { chatId } = useParams<{ chatId?: string }>();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(chatId || null);
   const [systemStatus, setSystemStatus] = useState<{
     websocketStatus: 'connected' | 'disconnected',
     nanomachineClientVersion: string,
@@ -49,6 +54,13 @@ export default function DashboardPage() {
     };
   }, []);
   
+  // Update selectedChatId when URL parameter changes
+  useEffect(() => {
+    if (chatId) {
+      setSelectedChatId(chatId);
+    }
+  }, [chatId]);
+  
   // Function to request task refresh via socket
   const handleRefreshTasks = () => {
     setIsLoading(true);
@@ -56,16 +68,31 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex flex-row gap-4 h-[calc(100vh-52px)] w-full m-0 p-0">
-      {/* Chat Interface - Left Column */}
-      <div className="w-1/3 h-full">
-        <div className="bg-white p-3 h-full overflow-hidden">
-          <ChatInterface />
+    <div className="flex flex-row h-[calc(100vh-52px)] w-full m-0 p-0">
+      {/* Chat List - Left Column */}
+      <div className="w-1/4 h-full">
+        <div className="bg-gray-100 h-full overflow-y-auto">
+          <ChatList 
+            onChatSelect={(chatId) => {
+              setSelectedChatId(chatId);
+              navigate(`/session/${chatId}`, { replace: true });
+            }}
+            selectedChatId={selectedChatId}
+          />
+        </div>
+      </div>
+      
+      {/* Chat Interface - Middle Column */}
+      <div className="w-1/4 h-full inset-shadow-sm shadow-sm">
+        <div className="bg-white h-full overflow-hidden">
+          <ChatInterface 
+            chatId={selectedChatId}
+          />
         </div>
       </div>
 
       {/* Right Column - Contains NoVNC Canvas, Tasks and System Status */}
-      <div className="w-2/3 h-full overflow-y-auto p-3">
+      <div className="w-1/2 h-full overflow-y-auto p-3">
         {/* Main Canvas Area */}
         <NanomachineCanvas width={800} height={450} />
 

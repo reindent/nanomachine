@@ -16,14 +16,25 @@ export interface AgentEvent {
   };
 }
 
+export interface Chat {
+  chatId: string;
+  title: string;
+  lastMessageAt: Date | string;
+  isActive: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
 export interface ChatMessage {
   id: string;
+  chatId?: string;  // Reference to the chat this message belongs to
   text: string;
   sender: 'user' | 'agent' | 'system';
   timestamp: string;
 }
 
 export interface ChatMessageRequest {
+  chatId?: string;  // Reference to the chat this message belongs to
   text: string;
   sender: 'user' | 'agent' | 'system';
 }
@@ -47,6 +58,7 @@ class SocketService {
   private chatMessageCallbacks: ((message: ChatMessage) => void)[] = [];
   private connectionStatusCallbacks: ((connected: boolean) => void)[] = [];
   private agentEventCallbacks: ((event: AgentEvent) => void)[] = [];
+  private chatCreatedCallbacks: ((chat: Chat) => void)[] = [];
 
   // Initialize socket connection
   connect(): void {
@@ -75,6 +87,12 @@ class SocketService {
     
     this.socket.on('chat:message', (message: ChatMessage) => {
       this.notifyChatMessage(message);
+    });
+    
+    // Listen for new chat creation events
+    this.socket.on('chat:created', (chat: Chat) => {
+      console.log('New chat created:', chat);
+      this.notifyChatCreated(chat);
     });
     
     this.socket.on('agent:event', (event: AgentEvent) => {
@@ -111,6 +129,17 @@ class SocketService {
     }
     
     this.socket.emit('tasks:refresh');
+  }
+  
+  // Archive a task
+  archiveTask(taskId: string): void {
+    if (!this.socket) {
+      console.error('Socket not connected');
+      return;
+    }
+    
+    this.socket.emit('task:archive', taskId);
+    console.log(`Sent archive request for task ${taskId}`);
   }
   
   // Event registration methods
@@ -150,6 +179,14 @@ class SocketService {
     };
   }
   
+  // Subscribe to chat created events
+  onChatCreated(callback: (chat: Chat) => void): () => void {
+    this.chatCreatedCallbacks.push(callback);
+    return () => {
+      this.chatCreatedCallbacks = this.chatCreatedCallbacks.filter(cb => cb !== callback);
+    };
+  }
+  
   // Notification methods
   private notifyTaskUpdate(tasks: Task[]): void {
     this.taskUpdateCallbacks.forEach(callback => callback(tasks));
@@ -174,6 +211,18 @@ class SocketService {
         callback(event);
       } catch (error) {
         console.error('Error in agent event callback:', error);
+      }
+    });
+  }
+  
+  // Notify chat created callbacks
+  private notifyChatCreated(chat: Chat): void {
+    console.log(`Notifying ${this.chatCreatedCallbacks.length} callbacks about new chat`);
+    this.chatCreatedCallbacks.forEach(callback => {
+      try {
+        callback(chat);
+      } catch (error) {
+        console.error('Error in chat created callback:', error);
       }
     });
   }

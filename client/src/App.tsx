@@ -13,6 +13,8 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/sessions" element={<DashboardPage />} />
+          <Route path="/session/:chatId" element={<DashboardPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

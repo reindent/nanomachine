@@ -35,6 +35,9 @@ export default function Header() {
           <Link to="/tasks" className="hover:text-blue-400 transition-colors">
             Tasks
           </Link>
+          <Link to="/sessions" className="hover:text-blue-400 transition-colors">
+            Sessions
+          </Link>
           <Link to="/settings" className="hover:text-blue-400 transition-colors">
             Settings
           </Link>
@@ -88,6 +91,13 @@ export default function Header() {
               onClick={() => setIsMenuOpen(false)}
             >
               Tasks
+            </Link>
+            <Link
+              to="/sessions"
+              className="block py-2 hover:text-blue-400 transition-colors"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Sessions
             </Link>
             <Link
               to="/settings"

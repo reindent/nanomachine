@@ -18,17 +18,18 @@ type Message = SocketChatMessage;
 
 interface ChatInterfaceProps {
   height?: number; // Not used directly but kept for API consistency
+  chatId?: string | null; // ID of the chat to display
 }
 
-export default function ChatInterface({}: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'msg-001',
-      sender: 'agent',
-      text: 'Hello! I am Nanomachine, your Virtual Machine AI agent. How can I assist you today?',
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+const fallbackChatMessage : Message = {
+  id: '0',
+  sender: 'agent',
+  text: 'Hello! I am Nanomachine, your Virtual Machine AI agent. How can I assist you today?',
+  timestamp: new Date().toISOString(),
+};
+
+export default function ChatInterface({ chatId }: ChatInterfaceProps) {
+  const [messages, setMessages] = useState<Message[]>([ fallbackChatMessage ]);
   const [agentEvents, setAgentEvents] = useState<AgentEventDisplay[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -49,10 +50,23 @@ export default function ChatInterface({}: ChatInterfaceProps) {
     
     // Listen for chat messages
     const chatUnsubscribe = socketService.onChatMessage((message) => {
-      if (message.sender === 'agent') {
-        setIsTyping(false);
+      console.log('Received message in client:', message);
+      
+      // Always show the message if it matches any of these conditions:
+      // 1. It's for the current chat
+      // 2. No chat is selected (chatId is null/undefined)
+      // 3. It's from the current user (regardless of chatId)
+      if ((chatId && message.chatId === chatId) || 
+          !chatId || 
+          message.sender === 'user') {
+            
+        if (message.sender === 'agent') {
+          setIsTyping(false);
+        }
+        
+        setMessages(prevMessages => [...prevMessages, message]);
+        console.log('Added message to UI');
       }
-      setMessages(prevMessages => [...prevMessages, message]);
     });
     
     // Listen for agent events
@@ -79,6 +93,14 @@ export default function ChatInterface({}: ChatInterfaceProps) {
           console.log(`Updated agent events array, now has ${updated.length} events`);
           return updated;
         });
+        
+        // Stop typing indicator when task completes or errors
+        if (event.event.state === 'task.error' || 
+            event.event.state === 'task.ok' || 
+            event.event.state === 'task.complete') {
+          console.log(`Task ${event.event.state} received, stopping typing indicator`);
+          setIsTyping(false);
+        }
         
         // For certain events, we might want to add a chat message too
         if (
@@ -109,6 +131,50 @@ export default function ChatInterface({}: ChatInterfaceProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
+  // Load chat history when chatId changes
+  useEffect(() => {
+    if (chatId) {
+      // Reset messages when changing chats
+      setMessages([]);
+      setAgentEvents([]);
+      
+      // Fetch chat history
+      const fetchChatHistory = async () => {
+        try {
+          const response = await fetch(`http://localhost:3100/api/chats/${chatId}/messages`);
+          if (response.ok) {
+            const data = await response.json();
+            // Convert the API response to our Message format
+            const chatMessages: Message[] = data.map((msg: any) => ({
+              id: msg._id,
+              chatId: msg.chatId,
+              text: msg.content,
+              sender: msg.role,
+              timestamp: msg.timestamp
+            }));
+            
+            if (chatMessages.length === 0) {
+              // If no messages, add a welcome message
+              setMessages([{...fallbackChatMessage, chatId}]);
+            } else {
+              setMessages(chatMessages);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching chat history:', error);
+          // Add a fallback welcome message on error
+          setMessages([{ ...fallbackChatMessage, chatId }]);
+        }
+      };
+      
+      fetchChatHistory();
+    } else {
+      // If no chat is selected, show a default welcome message
+      setMessages([fallbackChatMessage]);
+      setAgentEvents([]);
+    }
+  }, [chatId]);
+  
   // Auto-scroll to bottom when agent events change
   useEffect(() => {
     if (showEvents && eventsEndRef.current) {
@@ -121,6 +187,7 @@ export default function ChatInterface({}: ChatInterfaceProps) {
 
     // Send message via socket
     socketService.sendChatMessage({
+      chatId: chatId || undefined,
       text: inputText,
       sender: 'user'
     });

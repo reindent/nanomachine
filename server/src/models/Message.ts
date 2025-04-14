@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IMessage extends Document {
   chatId: mongoose.Types.ObjectId;  // Reference to parent chat
-  role: string;                     // 'user' or 'assistant'
+  role: string;                     // 'user', 'agent', or 'system'
   content: string;                  // Message content
   timestamp: Date;                  // When the message was sent
   metadata?: {                      // Optional metadata
@@ -26,7 +26,7 @@ const MessageSchema: Schema = new Schema(
     role: { 
       type: String, 
       required: true,
-      enum: ['user', 'assistant', 'system'],
+      enum: ['user', 'agent', 'system'],
       index: true
     },
     content: { 

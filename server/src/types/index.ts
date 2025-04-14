@@ -19,12 +19,14 @@ export interface SystemStatus {
 // Chat message types
 export interface ChatMessage {
   id: string;
+  chatId?: string;  // Reference to the chat this message belongs to
   text: string;
-  sender: 'user' | 'agent';
+  sender: 'user' | 'agent' | 'system';
   timestamp: string;
 }
 
 export interface ChatMessageRequest {
+  chatId?: string;  // Reference to the chat this message belongs to
   text: string;
-  sender: 'user' | 'agent';
+  sender: 'user' | 'agent' | 'system';
 }
