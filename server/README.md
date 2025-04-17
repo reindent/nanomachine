@@ -1,22 +1,42 @@
-# Nanomachine Bridge Server
+# Nanomachine Server
 
-A WebSocket and HTTP bridge server for communication between the nanobrowser extension and nanomachine service.
+The Nanomachine Server is the backend component of the Nanomachine AI agent dashboard. It provides WebSocket and HTTP APIs for communication between the client application, the bridge service, and the nanobrowser extension.
 
-## Features
+## Architecture Overview
 
-- WebSocket bridge for real-time communication
-- MongoDB integration for data persistence
-- RESTful API endpoints for chat and task management
-- Socket.IO for real-time client updates
+The server is built with Node.js and Express, using a modular architecture with the following components:
 
-## Models
+- **HTTP API**: RESTful endpoints for chat and task management
+- **WebSocket Server**: Real-time communication using Socket.IO
+- **Database Integration**: MongoDB for data persistence
+- **Bridge Communication**: WebSocket and HTTP integration with the bridge service
+- **VNC Service**: Proxy for remote browser control
 
-The server uses MongoDB with the following models:
+## Core Components
 
-1. **Chat** - Stores chat sessions
-2. **Message** - Stores individual messages within chats
-3. **Task** - Tracks task execution from start to finish
-4. **TaskEvent** - Records detailed events during task execution
+### Services
+
+- **BridgeService**: Manages communication with the bridge component, handling agent events and task operations
+- **NanobrowserService**: Configures the nanobrowser extension with LLM providers and agent models
+- **VNCService**: Provides remote browser viewing and control capabilities
+
+### Models
+
+The server uses MongoDB with Mongoose for data persistence:
+
+1. **Chat**: Stores chat sessions between users and AI agents
+2. **Message**: Stores individual messages within chats
+3. **Task**: Tracks AI agent tasks from creation to completion
+4. **TaskEvent**: Records detailed events during task execution
+
+### Controllers & Routes
+
+The server implements a clean MVC pattern with dedicated controllers and routes for each resource:
+
+- **Chat Routes**: Manage conversation sessions
+- **Task Routes**: Handle task creation and monitoring
+- **Status Routes**: Provide system status information
+- **Bridge Routes**: Facilitate communication with the bridge service
 
 ## API Endpoints
 
@@ -26,13 +46,9 @@ The server uses MongoDB with the following models:
 - `GET /api/chats/:id` - Get a specific chat
 - `POST /api/chats` - Create a new chat
 - `PUT /api/chats/:id` - Update a chat
-- `DELETE /api/chats/:id` - Delete a chat (soft delete)
-
-### Message Endpoints
-
+- `DELETE /api/chats/:id` - Delete a chat
 - `GET /api/chats/:chatId/messages` - Get messages for a chat
 - `POST /api/chats/:chatId/messages` - Create a new message
-- `DELETE /api/chats/messages/:id` - Delete a message
 
 ### Task Endpoints
 
@@ -43,31 +59,117 @@ The server uses MongoDB with the following models:
 - `GET /api/tasks/:id/events` - Get events for a task
 - `POST /api/tasks/:id/events` - Create a task event
 
-## Setup
+### Status Endpoints
 
-1. Install dependencies:
-   ```
-   npm install
-   ```
-
-2. Configure environment variables:
-   Copy `.env.template` to `.env` and update the values.
-
-3. Start the server:
-   ```
-   npm run dev
-   ```
+- `GET /health` - Server health check
+- `GET /api/status` - Get system status information
 
 ## WebSocket Events
 
-The server uses Socket.IO for real-time communication:
+The server uses Socket.IO for real-time communication with clients:
 
-- `chat:message` - Send/receive chat messages
-- `agent:event` - Receive agent events
-- `tasks:update` - Receive task updates
-- `tasks:refresh` - Request task refresh
-- `status:update` - Receive system status updates
+### Outgoing Events (Server to Client)
 
-## MongoDB Integration
+- `chat:message` - New chat message available
+- `chat:created` - New chat session created
+- `chat:select` - Request client to select a specific chat
+- `agent:event` - Agent event notification (from bridge)
+- `task:created` - New task created
+- `task:completed` - Task completed successfully
+- `task:failed` - Task failed with error
+- `tasks:update` - Updated task list available
+- `status:update` - System status information
 
-The server connects to MongoDB using Mongoose. Make sure MongoDB is running and accessible at the URI specified in your `.env` file.
+### Incoming Events (Client to Server)
+
+- `chat:message` - Client sends a new message
+- `tasks:refresh` - Client requests updated task list
+- `task:archive` - Client requests to archive a task
+
+## Bridge Integration
+
+The server communicates with the bridge service in two ways:
+
+1. **WebSocket**: For real-time events and status updates
+2. **HTTP API**: For task creation, provider configuration, and agent model setup
+
+The bridge service forwards agent events from the nanobrowser extension to the server, which then processes them and forwards relevant information to connected clients.
+
+## Setup and Configuration
+
+### Prerequisites
+
+- Node.js 18+
+- MongoDB 4.4+
+- Bridge service running and accessible
+
+### Installation
+
+```bash
+npm install
+```
+
+### Configuration
+
+Copy `.env.template` to `.env` and configure the following variables:
+
+```
+# Server Configuration
+PORT=3100
+MONGODB_URI=mongodb://localhost:27017/nanomachine
+
+# Bridge Configuration
+BRIDGE_URL=http://localhost:8787
+
+# OpenAI API Configuration
+OPENAI_API_KEY=your_openai_api_key
+
+# LLM Model Configuration
+LLM_MODEL_NAMES=gpt-4.1,gpt-4o,gpt-4o-mini,o3-mini
+
+# Agent Configuration
+AGENT_PLANNER_MODEL=gpt-4.1
+AGENT_PLANNER_TEMPERATURE=0.7
+AGENT_PLANNER_TOP_P=0.9
+
+AGENT_NAVIGATOR_MODEL=gpt-4.1
+AGENT_NAVIGATOR_TEMPERATURE=0.3
+AGENT_NAVIGATOR_TOP_P=0.85
+
+AGENT_VALIDATOR_MODEL=gpt-4.1
+AGENT_VALIDATOR_TEMPERATURE=0.1
+AGENT_VALIDATOR_TOP_P=0.8
+
+# VNC Configuration
+VNC_HOST=localhost
+VNC_PORT=6080
+VNC_PASSWORD=password
+```
+
+### Running the Server
+
+Development mode with hot reloading:
+
+```bash
+npm run dev
+```
+
+Production mode:
+
+```bash
+npm start
+```
+
+## Integration with Other Components
+
+The server integrates with:
+
+- **Client Application**: Provides API endpoints and WebSocket events for the frontend
+- **Bridge Service**: Communicates with the bridge to send tasks and receive agent events
+- **Nanobrowser Extension**: Indirectly communicates through the bridge service
+
+## License
+
+This component is licensed under the [MIT License](../LICENSE.md) unless otherwise specified. Some dependencies may have different licensing terms.
+
+© 2025-present Reindent LLC <contact@reindent.com>
