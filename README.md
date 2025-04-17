@@ -1,115 +1,161 @@
-# Nanomachine - Minimal Linux with GUI and Chromium
+# Nanomachine
 
-A ready-to-use Docker container with a minimal Linux environment, GUI, and a Chromium browser with the Nanobrowser extension accessible via VNC.
+![Nanomachine](./nanomachine.png)
 
-## Quick Start
+Nanomachine is a Virtual Machine (VM) AI agent dashboard that enables intelligent operative system automation and control. It provides a modern, intuitive interface for interacting with AI agents that can navigate and perform tasks in web browsers, filesystems, and more.
 
-Run the container with:
+## Project Overview
 
-```bash
-docker run -d -p 5900:5900 -p 6080:6080 --name nanomachine-browser -e VNC_PASSWORD="password" mrcolorrain/vnc-browser:debian
+Nanomachine consists of three main components that work together to provide a seamless AI agent experience:
+
+1. **Client**: React-based web application that serves as the user interface
+2. **Server**: Node.js backend that manages tasks, chats, and system state
+3. **Bridge**: Communication layer between the server and Nanobrowser extension
+4. **Docker Container**: Docker container that provides an isolated environment for running the Nanobrowser extension (contains the browser and VNC server)
+
+## Architecture
+
+```
+┌─────────────┐                  ┌─────────────┐                  ┌─────────────┐
+│             │                  │             │                  │             │
+│   Client    │ ◄──────────────► │   Server    │ ◄──────────────► │   Bridge    │
+│  (React)    │   WebSocket/HTTP │  (Node.js)  │   WebSocket/HTTP │  Service    │
+│             │                  │             │                  │             │
+└─────────────┘                  └─────────────┘                  └─────────────┘
+                                                                         ▲
+                                                                         │
+                                                                         ▼
+                                                              ┌───────────────────┐
+                                                              │  Docker Container │
+                                                              │   (Debian Linux)  │
+                                                              │  ┌─────────────┐  │
+                                                              │  │             │  │
+                                                              │  │ Nanobrowser │  │
+                                                              │  │ Extension   │  │
+                                                              │  │             │  │
+                                                              │  └─────────────┘  │
+                                                              └───────────────────┘
 ```
 
-## Accessing the Container
+## Compatibility
 
-You can access the container in two ways:
+Nanomachine currently runs on Linux and macOS (Intel & Apple Silicon). Windows support is coming soon.
 
-### 1. Using a VNC client
+## Components
 
-- Connect to: `localhost:5900`
-- Password: `password`
+### Client
 
-### 2. Using a web browser (noVNC)
+The client application provides the user interface for interacting with AI agents:
 
-- Open: `http://localhost:6080` in your browser
-- Password: `password`
+- **Chat Interface**: Communicate with AI agents through a familiar chat interface
+- **Task Log**: Monitor AI agent tasks with live status updates and progress indicators
+- **VM Canvas**: View and control browser sessions through an embedded VNC interface
+- **System Status**: Track the status of all system components
 
-## Features
+[Learn more about the client component](./client/README.md)
 
-This container includes:
+### Server
 
-- Debian Linux (lightweight)
-- Chromium browser (pre-installed)
-- VNC server (already configured)
-- noVNC for browser-based access
+The server handles the business logic and data persistence:
 
-## Installing Nanobrowser Extension
+- **HTTP API**: RESTful endpoints for chat and task management
+- **WebSocket Server**: Real-time communication using Socket.IO
+- **Database Integration**: MongoDB for data persistence
+- **Bridge Communication**: Integration with the bridge service
+- **VNC Service**: Proxy for remote browser control
 
-This repository includes a script to install the nanobrowser extension in the Chromium browser inside the container.
+[Learn more about the server component](./server/README.md)
 
-### Automated Installation
+### Bridge
 
-Run the setup script to automatically install the extension:
+The bridge facilitates communication between the Nanomachine application and the Nanobrowser extension:
 
-```bash
-chmod +x setup-nanobrowser.sh
-./setup-nanobrowser.sh
-```
+- **WebSocket Server**: Handles real-time bidirectional communication
+- **HTTP REST API**: Provides endpoints for configuration and task management
+- **Task Routing**: Manages task creation, tracking, and event processing
+- **Configuration API**: Endpoints for LLM provider and agent model configuration
 
-This script will:
-1. Start the container if not already running
-2. Install necessary tools (wget, unzip)
-3. Download and extract the nanobrowser extension
-4. Set up the extension in the container
-5. Create a launch script for Chromium with the extension loaded
+NOTE: The bridge is installed inside the Docker container automatically.
 
-### Manual Installation
+[Learn more about the bridge component](./bridge/README.md)
 
-If you prefer to install the extension manually, follow these steps:
+### Scripts
 
-1. Connect to the container via VNC
-2. Open a terminal in the container
-3. Run the following commands:
+The scripts directory contains utility scripts for managing the Nanomachine environment:
 
-```bash
-# Download and extract the extension
-cd /tmp
-wget https://github.com/nanobrowser/nanobrowser/releases/download/v0.1.4/nanobrowser.zip
-unzip nanobrowser.zip -d nanobrowser
+- **Installation Scripts**: Set up the environment and its components
+- **Runtime Scripts**: Start, stop, and restart services
+- **Utility Scripts**: Perform system checks and maintenance tasks
 
-# Set up the extension directory
-mkdir -p /home/nova/extensions
-cp -r /tmp/nanobrowser /home/nova/extensions/
+[Learn more about the scripts](./scripts/README.md)
 
-# Launch Chromium with the extension
-/usr/bin/chromium \
-  --disable-extensions-except=/home/nova/extensions/nanobrowser \
-  --load-extension=/home/nova/extensions/nanobrowser \
-  --enable-features=ExtensionsToolbarMenu \
-  "chrome://extensions/"
-```
-- Minimal resource usage
+### Docker Container
 
-## Managing the Container
+The Docker container provides an isolated environment for running the Nanobrowser extension:
 
-```bash
-# Stop the container
-docker stop nanomachine-browser
+- **Chromium Browser**: Pre-configured web browser with the Nanobrowser extension
+- **VNC Server**: Allows remote viewing and control of the browser
+- **noVNC**: Web-based VNC client for browser access
 
-# Start the container again
-docker start nanomachine-browser
+The container is based on a minimal Debian Linux image optimized for browser automation.
 
-# Remove the container
-docker rm nanomachine-browser
+## Getting Started
 
-# View container logs
-docker logs nanomachine-browser
-```
+### Prerequisites
 
-## Customization
+- Node.js 18+
+- MongoDB 4.4+
+- Docker (for running the Nanobrowser container)
 
-You can customize the container by setting environment variables:
+### Installation
 
-```bash
-docker run -d -p 5900:5900 -p 6080:6080 \
-  --name nanomachine-browser \
-  -e VNC_PASSWORD="your_password" \
-  -e VNC_RESOLUTION="1280x720" \
-  mrcolorrain/vnc-browser:debian
-```
+1. Clone the repository:
 
-## Credits
+   ```bash
+   git clone https://github.com/reindent/nanomachine.git
+   cd nanomachine
+   ```
+2. Install dependencies for all components:
 
-This setup uses the `mrcolorrain/vnc-browser:debian` Docker image, which is a minimal, customizable, Linux-based Docker image designed to provide a lightweight environment for browsing the web via VNC.
+   ```bash
+   npm run install:all
+   ```
+3. Configure environment variables:
 
-For more information, visit: [https://github.com/MRColorR/vnc-browser](https://github.com/MRColorR/vnc-browser)
+   - Copy `.env.template` to `.env` in server and client directories
+   - Update the values as needed for your environment
+4. Start all components:
+
+   ```bash
+   npm run dev
+   ```
+5. Navigate to http://localhost:5173
+
+## Configuration
+
+Each component can be configured through environment variables. See the individual component README files for detailed configuration options.
+
+## Roadmap
+
+- [X] Dashboard
+- [X] Docker container
+- [X] VNC client
+- [X] Install scripts
+- [X] Browsing AI agent integration (using Nanobrowser)
+- [ ] Tests: we need to add tests for all components
+- [ ] Multiple browser sessions: ideally each session has its own VM
+- [ ] VM AI agent: operate virtual machines, OS, filesystem, etc. using natural language
+- [ ] Windows support: add scripts for Windows
+- [ ] Electron app: add a desktop application for a more native experience
+- [ ] Mobile app: create a mobile application to monitor and control the AI agents
+- [ ] More to come...
+
+## Contributing
+
+We welcome contributions to Nanomachine! Please see our [Contributing Guide](./CONTRIBUTING.md) for more information on how to get started.
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE.md) unless otherwise specified. Some components may have different licensing terms.
+
+© 2025-present Reindent LLC <contact@reindent.com>

@@ -1,47 +1,31 @@
 {
   "name": "nanomachine",
-  "version": "1.0.0",
+  "license": "MIT",
+  "version": "0.1.0",
   "description": "Virtual Machine AI Agent",
+  "author": "Reindent LLC <contact@reindent.com>",
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/bridge/index.js",
     "dev": "npm run start:docker && concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "ts-node server/src/index.ts",
+    "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "dev:bridge": "ts-node bridge/index.ts",
+    "dev:bridge": "cd bridge && npm run dev",
     "start:docker": "./scripts/vm/start",
     "stop:docker": "./scripts/vm/stop",
     "reinstall:docker": "./scripts/vm/reinstall",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
+    "nanomachine",
     "nanobrowser",
-    "api",
-    "bridge",
-    "chrome",
-    "extension"
+    "browseruse",
+    "vm",
+    "aiagent"
   ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.1",
-    "@types/socket.io": "^3.0.1",
-    "axios": "^1.8.4",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "rfb2": "^0.2.2",
-    "sharp": "^0.34.1",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
-    "ws": "^8.18.1"
-  },
   "devDependencies": {
-    "@types/node": "^20.17.30",
-    "@types/ws": "^8.18.1",
-    "concurrently": "^9.1.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "concurrently": "^9.1.2"
   }
 }
