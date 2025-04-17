@@ -1,14 +1,14 @@
 {
-  "name": "nanomachine-nanobrowser-bridge",
-  "version": "1.0.0",
+  "name": "nanomachine-bridge",
+  "version": "0.1.0",
+  "description": "Bridge for nanomachine and nanobrowser",
+  "author": "Reindent LLC <contact@reindent.com>",
+  "license": "MIT",
   "main": "index.ts",
   "scripts": {
-    "start": "forever -c 'tsx' index.ts",
+    "dev": "forever -c 'tsx' src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.1"
