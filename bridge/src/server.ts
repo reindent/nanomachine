@@ -24,6 +24,7 @@ interface Client {
   socket: WebSocket;
   id: string;
   name: string;
+  version?: string;
 }
 
 let nanobrowserClient: Client | null = null;
@@ -79,17 +80,18 @@ wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
         
         if (name === 'nanobrowser-extension') {
           console.log('Nanobrowser extension connected');
-          nanobrowserClient = { socket, id: clientId, name };
+          const version = data.version ? String(data.version) : 'unknown';
+          nanobrowserClient = { socket, id: clientId, name, version };
           // notify nanomachine that nanobrowser is ready
           if(nanomachineClient && nanomachineClient.socket.readyState === WebSocket.OPEN) {
-            nanomachineClient.socket.send(JSON.stringify({ type: 'nanobrowser', ready: true }));
+            nanomachineClient.socket.send(JSON.stringify({ type: 'nanobrowser', ready: true, version }));
           }
         } else if (name === 'nanomachine-service') {
           console.log('Nanomachine service connected');
           nanomachineClient = { socket, id: clientId, name };
           // notify nanomachine if nanobrowser is ready
           if(nanobrowserClient && nanobrowserClient.socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'nanobrowser', ready: true }));
+            socket.send(JSON.stringify({ type: 'nanobrowser', ready: true, version: nanobrowserClient.version }));
           }
         } else {
           console.error(`Invalid client name: ${name}`);

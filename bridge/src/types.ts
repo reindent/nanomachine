@@ -1,6 +1,3 @@
-// src/types.ts
-// Common types used across the project
-
 export interface PromptRequest {
   task: string;
   tabId?: number | null;
