@@ -1,7 +1,9 @@
 {
-  "name": "react-vite-tailwindcss",
-  "private": true,
-  "version": "0.0.0",
+  "name": "nanomachine-client",
+  "version": "0.1.0",
+  "description": "Client for nanomachine",
+  "author": "Reindent LLC <contact@reindent.com>",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
