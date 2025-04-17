@@ -9,10 +9,10 @@ CONTAINER_USER="abc"
 CONTAINER_HOME="/home/abc"
 
 # Kill the existing bridge process
-docker exec $CONTAINER_NAME bash -l -c "pkill -f 'tsx index.ts'"
+docker exec $CONTAINER_NAME bash -l -c "pkill -f 'tsx src/index.ts'"
 
 # Run nanobrowser bridge as a background service
-docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && nohup tsx index.ts > $CONTAINER_HOME/nanomachine.log 2>&1 &"
+docker exec $CONTAINER_NAME bash -l -c "cd $CONTAINER_HOME/bridge && nohup tsx src/index.ts > $CONTAINER_HOME/nanomachine.log 2>&1 &"
 
 echo "Bridge started"
 

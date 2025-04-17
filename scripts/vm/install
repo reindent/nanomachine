@@ -28,9 +28,10 @@ docker run -d \
   -e TZ=Etc/UTC \
   -p $HOST_VNC_PORT:3000 \
   -p $HOST_BRIDGE_PORT:8787 \
+  -v $SCRIPT_DIR/../../vm:/config \
   --shm-size="1gb" \
   --restart unless-stopped \
-  lscr.io/linuxserver/chromium:latest
+  linuxserver/chromium:version-cc16b1d1
 
 # Wait for container to initialize
 $SCRIPT_DIR/wait || exit 1
