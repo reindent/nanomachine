@@ -43,7 +43,7 @@ export default function SettingsPage() {
     );
   };
 
-  const [serverUrl, setServerUrl] = useState('ws://localhost:8787');
+  const [serverUrl, setServerUrl] = useState(import.meta.env.VITE_BRIDGE_URL || 'ws://localhost:8787');
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   const handleSaveSettings = () => {

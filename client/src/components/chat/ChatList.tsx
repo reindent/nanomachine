@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import socketService from '../../services/socketService';
+import { API_URL } from '../../config';
 
 // Define the Chat interface
 interface Chat {
@@ -39,6 +40,16 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
       // Refresh the chat list when a new chat is created
       fetchChats();
     });
+
+    // Listen for chat selection events
+    const chatSelectedUnsubscribe = socketService.onChatSelected((chatId) => {
+      console.log('ChatList received chat selection notification:', chatId);
+      // Select the chat in the UI
+      if (onChatSelect) {
+        onChatSelect(chatId);
+      }
+      
+    });
     
     // Also listen for chat messages - refresh the list when any message is sent
     const chatMessageUnsubscribe = socketService.onChatMessage(() => {
@@ -50,6 +61,7 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
     return () => {
       chatCreatedUnsubscribe();
       chatMessageUnsubscribe();
+      chatSelectedUnsubscribe();
     };
   }, []);
 
@@ -57,7 +69,7 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
   const fetchChats = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:3100/api/chats');
+      const response = await axios.get(`${API_URL}/api/chats`);
       setChats(response.data);
       setError(null);
     } catch (err) {
@@ -71,8 +83,8 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
   // Function to create a new chat
   const createNewChat = async () => {
     try {
-      const response = await axios.post('http://localhost:3100/api/chats', {
-        title: `New Chat ${new Date().toLocaleString()}`
+      const response = await axios.post(`${API_URL}/api/chats`, {
+        title: `New Session ${new Date().toLocaleString()}`
       });
       
       // Refresh the chat list immediately after creating a new chat
@@ -105,7 +117,7 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
     }
     
     try {
-      await axios.delete(`http://localhost:3100/api/chats/${chatId}`);
+      await axios.delete(`${API_URL}/api/chats/${chatId}`);
       // Refresh the chat list
       fetchChats();
     } catch (err) {
@@ -130,7 +142,7 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
     }
     
     try {
-      await axios.put(`http://localhost:3100/api/chats/${editingChatId}`, {
+      await axios.put(`${API_URL}/api/chats/${editingChatId}`, {
         title: editingChatTitle.trim()
       });
       
@@ -220,7 +232,7 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
         <div className="relative">
           <input
             type="text"
-            placeholder="Search chats..."
+            placeholder="Search sessions..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm bg-white"
@@ -277,12 +289,12 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  <p className="text-gray-600 mb-4">No chats found</p>
+                  <p className="text-gray-600 mb-4">No sessions found</p>
                   <button
                     onClick={createNewChat}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors"
                   >
-                    Create your first chat
+                    Create your first session
                   </button>
                 </div>
               )}

@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTooltip } from './Tooltip';
+import socketService from '../../services/socketService';
 
-interface VMIFrameProps {
-  iframeUrl: string;
-}
+const KASM_VNC_URL = import.meta.env.VITE_VNC_URL || "http://localhost:3201/vnc/index.html?autoconnect=1&resize=remote&enable_perf_stats=0";
 
-const VMIFrame: React.FC<VMIFrameProps> = ({ iframeUrl }) => {
+const VMIFrame: React.FC = () => {
   // State for iframe visibility and control
   const [isConnected, setIsConnected] = useState(false);
   const [hasControl, setHasControl] = useState(false);
@@ -23,6 +22,28 @@ const VMIFrame: React.FC<VMIFrameProps> = ({ iframeUrl }) => {
     setIsConnected(false);
     setHasControl(false);
   };
+
+  const [iframeUrl, setIframeUrl] = useState('');
+  useEffect(() => {
+    setIframeUrl(hasControl ? KASM_VNC_URL : `${KASM_VNC_URL}&view_only=1&resize=scale`);
+  }, [hasControl]);
+
+  // Listen for task:created event and auto-connect
+  useEffect(() => {
+    // Subscribe to task:created events
+    const unsubscribe = socketService.onTaskCreated(() => {
+      // Auto-connect when a task is created
+      if (!isConnected) {
+        console.log('Task created, auto-connecting to VM');
+        handleConnect();
+      }
+    });
+    
+    // Cleanup subscription on component unmount
+    return () => {
+      unsubscribe();
+    };
+  }, [isConnected]);
 
   // No need for state to handle hover effect with Tailwind
   

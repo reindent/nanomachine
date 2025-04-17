@@ -23,7 +23,7 @@ const SystemStatus: React.FC<SystemStatusProps> = ({
       <div className="bg-white p-3">
         <div className="space-y-3">
         <div className="flex justify-between items-center">
-          <span className="text-gray-600">Server Status:</span>
+          <span className="text-gray-600">VM Status:</span>
           <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium ${
             serverStatus === 'online' 
               ? 'bg-green-100 text-green-800' 

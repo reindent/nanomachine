@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ChatInterface from '../components/common/ChatInterface';
 import NanomachineCanvas from '../components/dashboard/NanomachineCanvas';
-import ActiveTasks, { Task } from '../components/dashboard/ActiveTasks';
+import TaskLog, { Task } from '../components/dashboard/TaskLog';
 import SystemStatus from '../components/dashboard/SystemStatus';
 import DashboardFooter from '../components/dashboard/DashboardFooter';
 import ChatList from '../components/chat/ChatList';
@@ -94,10 +94,11 @@ export default function DashboardPage() {
       {/* Right Column - Contains NoVNC Canvas, Tasks and System Status */}
       <div className="w-1/2 h-full overflow-y-auto p-3">
         {/* Main Canvas Area */}
-        <NanomachineCanvas width={800} height={450} />
+        <NanomachineCanvas />
 
         {/* Task Information */}
-        <ActiveTasks 
+        <TaskLog 
+          chatId={selectedChatId}
           tasks={tasks}
           isLoading={isLoading}
           onRefresh={handleRefreshTasks}

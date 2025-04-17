@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import socketService from '../../services/socketService';
 
 export interface Task {
+  chatId: string | null;
   taskId: string;
   status: 'completed' | 'running' | 'idle' | 'failed' | 'cancelled' | 'pending';
   prompt: string;
@@ -14,13 +15,64 @@ export interface Task {
   progress?: number;
 }
 
-interface ActiveTasksProps {
+interface TaskLogProps {
+  chatId: string | null;
   tasks: Task[];
   isLoading: boolean;
   onRefresh: () => void;
 }
 
-const ActiveTasks: React.FC<ActiveTasksProps> = ({ tasks, isLoading, onRefresh }) => {
+const TaskLog: React.FC<TaskLogProps> = ({ chatId, tasks: initialTasks, isLoading, onRefresh }) => {
+  // Local state to manage tasks, initialized with props
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+
+  // Filter tasks by chatId
+  useEffect(() => {
+    if (chatId) {
+      setTasks(initialTasks.filter(task => task.chatId === chatId));
+    } else {
+      setTasks(initialTasks);
+    }
+  }, [chatId, initialTasks]);
+  
+  // Subscribe to task events (created, completed, failed)
+  useEffect(() => {
+    // Listen for new tasks
+    const createdUnsubscribe = socketService.onTaskCreated((newTask) => {
+      console.log('New task created:', newTask);
+      // Add the new task to the beginning of the list
+      setTasks(prevTasks => [newTask, ...prevTasks]);
+    });
+    
+    // Listen for completed tasks
+    const completedUnsubscribe = socketService.onTaskCompleted((updatedTask) => {
+      console.log('Task completed:', updatedTask);
+      // Update the task in the list while preserving all fields
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.taskId === updatedTask.taskId ? updatedTask : task
+        )
+      );
+    });
+    
+    // Listen for failed tasks
+    const failedUnsubscribe = socketService.onTaskFailed((updatedTask) => {
+      console.log('Task failed:', updatedTask);
+      // Update the task in the list while preserving all fields
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.taskId === updatedTask.taskId ? updatedTask : task
+        )
+      );
+    });
+    
+    // Cleanup subscriptions on component unmount
+    return () => {
+      createdUnsubscribe();
+      completedUnsubscribe();
+      failedUnsubscribe();
+    };
+  }, []);
   const handleArchive = (taskId: string) => {
     socketService.archiveTask(taskId);
   };
@@ -47,13 +99,16 @@ const ActiveTasks: React.FC<ActiveTasksProps> = ({ tasks, isLoading, onRefresh }
   };
 
   const getProgressBar = (task: Task) => {
-    if (task.status !== 'running' || typeof task.progress === 'undefined') return null;
+    if (task.status !== 'running') return null;
     
     return (
-      <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+      <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1 overflow-hidden">
         <div 
-          className="bg-blue-500 h-2.5 rounded-full" 
-          style={{ width: `${task.progress}%` }}
+          className="h-2.5 rounded-full animate-progress-bar bg-gradient-to-r from-blue-300 via-blue-500 to-blue-300 background-size-200"
+          style={{ 
+            backgroundSize: '200% 100%',
+            animation: 'progress-bar-animation 2s linear infinite'
+          }}
         ></div>
       </div>
     );
@@ -148,4 +203,4 @@ const ActiveTasks: React.FC<ActiveTasksProps> = ({ tasks, isLoading, onRefresh }
   );
 };
 
-export default ActiveTasks;
+export default TaskLog;

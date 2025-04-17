@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import socketService, { ChatMessage as SocketChatMessage, AgentEvent } from '../../services/socketService';
+import { API_URL } from '../../config';
 
 // Define types for agent event display
 interface AgentEventDisplay {
@@ -51,16 +52,10 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
     // Listen for chat messages
     const chatUnsubscribe = socketService.onChatMessage((message) => {
       console.log('Received message in client:', message);
-      
-      // Always show the message if it matches any of these conditions:
-      // 1. It's for the current chat
-      // 2. No chat is selected (chatId is null/undefined)
-      // 3. It's from the current user (regardless of chatId)
-      if ((chatId && message.chatId === chatId) || 
-          !chatId || 
-          message.sender === 'user') {
-            
-        if (message.sender === 'agent') {
+
+      // Always show the message if it's for the current chat
+      if (chatId && message.chatId === chatId) {
+        if (message.sender === 'agent' || message.sender === 'system') {
           setIsTyping(false);
         }
         
@@ -95,23 +90,9 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
         });
         
         // Stop typing indicator when task completes or errors
-        if (event.event.state === 'task.error' || 
-            event.event.state === 'task.ok' || 
-            event.event.state === 'task.complete') {
+        if (['task.ok', 'task.fail'].includes(event.event.state)) {
           console.log(`Task ${event.event.state} received, stopping typing indicator`);
           setIsTyping(false);
-        }
-        
-        // For certain events, we might want to add a chat message too
-        if (
-          event.event.state === 'task.complete' || 
-          event.event.state === 'task.error' || 
-          event.event.state === 'task.start' ||
-          (event.event.state === 'task.progress' && event.event.data?.details)
-        ) {
-          // These messages will come from the server, so we don't need to add them here
-          // The server converts relevant agent events to chat messages
-          console.log('This event type would generate a chat message on the server');
         }
       } catch (error) {
         console.error('Error processing agent event:', error);
@@ -124,7 +105,7 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
       chatUnsubscribe();
       agentEventUnsubscribe();
     };
-  }, []);
+  }, [chatId]);
   
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -141,7 +122,7 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
       // Fetch chat history
       const fetchChatHistory = async () => {
         try {
-          const response = await fetch(`http://localhost:3100/api/chats/${chatId}/messages`);
+          const response = await fetch(`${API_URL}/api/chats/${chatId}/messages`);
           if (response.ok) {
             const data = await response.json();
             // Convert the API response to our Message format
@@ -223,6 +204,13 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
         >
           {showEvents ? 'Hide Events' : 'Show Events'}
         </button>
+      </div>
+
+      {/* Title bar: chat title */}
+      <div className="flex items-center px-2 py-1 bg-gray-100 border-b border-gray-200">
+        <div className="text-xs font-medium text-gray-600">
+          {chatId ? `Session ${chatId}` : 'New Session'}
+        </div>
       </div>
       
       {/* Messages container */}
