@@ -51,6 +51,7 @@ class BridgeService {
   private bridgeUrl: string;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnected = false;
+  private nanobrowserVersion: string = 'unknown';
   
   constructor(bridgeUrl = BRIDGE_URL) {
     this.bridgeUrl = bridgeUrl;
@@ -96,6 +97,11 @@ class BridgeService {
 
           // Handle nanobrowser ready message
           if (message.type === 'nanobrowser' && message.ready === true) {
+            // Store nanobrowser version if provided
+            if (message.version) {
+              this.nanobrowserVersion = message.version;
+              console.log(`Nanobrowser version: ${message.version}`);
+            }
             configureNanobrowser();
             console.log('Nanobrowser is ready and configured.');
           }
@@ -255,6 +261,20 @@ class BridgeService {
       console.error('Error updating agent model:', error);
       throw error;
     }
+  }
+  
+  /**
+   * Get the nanobrowser version
+   */
+  getNanobrowserVersion(): string {
+    return this.nanobrowserVersion;
+  }
+  
+  /**
+   * Check if the bridge is connected
+   */
+  isBridgeConnected(): boolean {
+    return this.isConnected;
   }
   
   /**

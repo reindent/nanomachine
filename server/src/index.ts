@@ -1,3 +1,12 @@
+/**
+ * Nanomachine
+ * 
+ * Copyright (c) 2025-present Reindent LLC
+ * 
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
@@ -5,7 +14,7 @@ import { Server } from 'socket.io';
 import { router as statusRoutes } from './routes/status';
 import { router as bridgeRoutes } from './routes/bridge';
 import { AgentEventMessage } from './types/bridge';
-import createVNCService from './vncService';
+import createVNCService from './vnc/vncService';
 import bridgeService from './services/bridgeService';
 import { connectToDatabase } from './utils/database';
 import chatRoutes from './routes/chatRoutes';
@@ -21,9 +30,28 @@ const io = new Server(server, {
   }
 });
 
+// Simple counter for active sessions
+let activeSessionCount = 0;
+
 // Initialize VNC service
 createVNCService(io);
 const PORT = process.env.SERVER_PORT || 3100;
+
+// Function to broadcast system status to all connected clients
+const broadcastSystemStatus = () => {
+  const systemStatus = {
+    websocketStatus: 'connected',
+    nanomachineClientVersion: process.env.CLIENT_VERSION || '1.0.0',
+    nanobrowserVersion: bridgeService.getNanobrowserVersion(),
+    serverStatus: bridgeService.isBridgeConnected() ? 'online' : 'offline',
+    activeSessions: activeSessionCount
+  };
+  io.emit('status:update', systemStatus);
+};
+
+// Set up periodic status updates
+setInterval(broadcastSystemStatus, 10000); // Update every 10 seconds
+broadcastSystemStatus(); // Initial broadcast
 
 // Middleware
 app.use(cors());
@@ -77,8 +105,6 @@ async function saveMessageToChat(chatId: string, content: string | undefined, ro
 
 // Set up bridge event forwarding to Socket.IO clients
 bridgeService.onAgentEvent(async (event: AgentEventMessage) => {
-  console.log('DEBUG: Received agent event:', event);
-
   console.log(`Forwarding agent event to clients: ${event.event.state}`);
   
   // Emit the event to all connected clients
@@ -96,26 +122,27 @@ bridgeService.onAgentEvent(async (event: AgentEventMessage) => {
   // Find the associated task
   const task = await Task.findOne({ taskId: event.taskId });
   if (task && task.chatId) {
-    // Convert relevant agent events to chat messages
-    if (event.event.state === 'task.complete' || 
-        event.event.state === 'task.progress' || 
-        event.event.state === 'task.error') {
+    // Handle task failure
+    if (event.event.state === 'task.fail') {
       const messageText = event.event.data.message || event.event.data.details || `${event.event.actor}: ${event.event.state}`;
       const messageRole = event.event.actor === 'system' ? 'system' : 'agent';
       
-        // Emit chat message to clients
-        const chatMessage = {
-          id: `msg-${Date.now()}`,
-          chatId: task.chatId,
-          text: messageText,
-          sender: messageRole,
-          timestamp: new Date().toISOString()
-        };
-        io.emit('chat:message', chatMessage);
-        console.log(`Emitted chat message for agent event: ${chatMessage.text}`);
+      // Emit chat message to clients
+      const chatMessage = {
+        id: `msg-${Date.now()}`,
+        chatId: task.chatId,
+        text: messageText,
+        sender: messageRole,
+        timestamp: new Date().toISOString()
+      };
+      io.emit('chat:message', chatMessage);
+      console.log(`Task failed. Emitted system error message: ${chatMessage.text}`);
       
-        // Save message to database for this chat
-        saveMessageToChat(task.chatId, messageText, messageRole, event.taskId);
+      // Save message to database for this chat
+      saveMessageToChat(task.chatId, messageText, messageRole, event.taskId);
+
+      // Clean up stored response
+      delete lastResponses[event.taskId];
     }
   
     // When task is completed (task.ok), send the last meaningful response as a chat message
@@ -144,25 +171,27 @@ bridgeService.onAgentEvent(async (event: AgentEventMessage) => {
 
 // Listen for task updates from bridge
 bridgeService.onTaskUpdate(async(message) => {
-  console.log('DEBUG: Received task update:', message);
-
   console.log(`Task update received: ${message.type}`);
   
   // Update task status based on task results/errors
   const task = await Task.findOne({ taskId: message.taskId });
   if (task) {
     try {
-    // Update task status
-    if (message.type === 'task_result') {
-      task.status = 'completed';
+      // Update task status
+      if (message.type === 'task_result') {
+        task.status = 'completed';
         task.result = message.result;
         task.endTime = new Date();
         await task.save();
+        console.log(`Task ${message.taskId} completed`);
+        io.emit('task:completed', task);
       } else if (message.type === 'task_error') {
         task.status = 'failed';
         task.error = message.error;
         task.endTime = new Date();
         await task.save();
+        console.log(`Task ${message.taskId} failed`);
+        io.emit('task:failed', task);
       }
     } catch (error) {
       console.error('Error updating task:', error);
@@ -185,8 +214,6 @@ bridgeService.onTaskUpdate(async(message) => {
       timestamp: timestamp.toISOString()
     };
     io.emit('chat:message', socketMessage);
-
-    // TODO: save error to database as system error message so that it can be retrieved later
   }
 });
 
@@ -194,18 +221,22 @@ bridgeService.onTaskUpdate(async(message) => {
 io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.id}`);
   
+  // Increment active session counter
+  activeSessionCount++;
+  broadcastSystemStatus();
+  
   try {
     // Send initial data on connection
     const tasks = await Task.find({ archived: false }).sort({ startTime: -1 }).limit(10);
     socket.emit('tasks:update', tasks);
     
-    // Get system status
+    // Get system status for this client
     const systemStatus = {
       websocketStatus: 'connected',
-      nanomachineClientVersion: process.env.CLIENT_VERSION || '0.1.4',
-      nanobrowserVersion: process.env.BROWSER_VERSION || '1.2.0',
-      serverStatus: 'online',
-      activeSessions: io.engine.clientsCount
+      nanomachineClientVersion: process.env.CLIENT_VERSION || '1.0.0',
+      nanobrowserVersion: bridgeService.getNanobrowserVersion(),
+      serverStatus: bridgeService.isBridgeConnected() ? 'online' : 'offline',
+      activeSessions: activeSessionCount
     };
     socket.emit('status:update', systemStatus);
   } catch (error) {
@@ -222,7 +253,7 @@ io.on('connection', async (socket) => {
       if (!message.chatId || message.chatId === '') {
         console.log('No valid chatId provided, creating new chat');
         const newChat = new Chat({
-          title: `Chat ${new Date().toLocaleString()}`,
+          title: `New Session ${new Date().toLocaleString()}`,
           lastMessageAt: new Date()
         });
         const savedChat = await newChat.save();
@@ -238,13 +269,14 @@ io.on('connection', async (socket) => {
           createdAt: savedChat.createdAt,
           updatedAt: savedChat.updatedAt
         });
+        io.emit('chat:select', savedChat.id);
       } else {
         // Verify that the chat exists
         const chatExists = await Chat.findById(message.chatId);
         if (!chatExists) {
           console.log(`Chat with ID ${message.chatId} not found, creating new chat`);
           const newChat = new Chat({
-            title: `Chat ${new Date().toLocaleString()}`,
+            title: `New Session ${new Date().toLocaleString()}`,
             lastMessageAt: new Date()
           });
           const savedChat = await newChat.save();
@@ -260,6 +292,7 @@ io.on('connection', async (socket) => {
             createdAt: savedChat.createdAt,
             updatedAt: savedChat.updatedAt
           });
+          io.emit('chat:select', savedChat.id);
         }
       }
       
@@ -305,6 +338,9 @@ io.on('connection', async (socket) => {
             startTime: new Date()
           });
           await task.save();
+
+          // Notify clients that a new task was created
+          io.emit('task:created', task);
           
         } catch (error) {
           console.error('Error forwarding message to bridge:', error);
@@ -355,6 +391,9 @@ io.on('connection', async (socket) => {
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
+    // Decrement active session counter (ensure it never goes below 0)
+    activeSessionCount = Math.max(0, activeSessionCount - 1);
+    broadcastSystemStatus();
   });
 });
 
