@@ -8,7 +8,10 @@
  */
 
 
-import { startServer } from './server';
+// Prevent errors from crashing the bridge
+import ErrorShield from './lib/ErrorShield';
+new ErrorShield();
 
 // Start the API server
+import { startServer } from './server';
 startServer();
