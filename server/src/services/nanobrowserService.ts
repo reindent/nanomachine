@@ -10,17 +10,17 @@ const MODEL_NAMES = process.env.LLM_MODEL_NAMES
   : ['gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3-mini'];
 
 // Agent configuration from environment variables
-const AGENT_PLANNER_MODEL = process.env.AGENT_PLANNER_MODEL || 'gpt-4.1';
-const AGENT_PLANNER_TEMPERATURE = parseFloat(process.env.AGENT_PLANNER_TEMPERATURE || '0.7');
-const AGENT_PLANNER_TOP_P = parseFloat(process.env.AGENT_PLANNER_TOP_P || '0.9');
+const NANOBROWSER_PLANNER_MODEL = process.env.NANOBROWSER_PLANNER_MODEL || 'gpt-4.1';
+const NANOBROWSER_PLANNER_TEMPERATURE = parseFloat(process.env.NANOBROWSER_PLANNER_TEMPERATURE || '0.7');
+const NANOBROWSER_PLANNER_TOP_P = parseFloat(process.env.NANOBROWSER_PLANNER_TOP_P || '0.9');
 
-const AGENT_NAVIGATOR_MODEL = process.env.AGENT_NAVIGATOR_MODEL || 'gpt-4.1';
-const AGENT_NAVIGATOR_TEMPERATURE = parseFloat(process.env.AGENT_NAVIGATOR_TEMPERATURE || '0.3');
-const AGENT_NAVIGATOR_TOP_P = parseFloat(process.env.AGENT_NAVIGATOR_TOP_P || '0.85');
+const NANOBROWSER_NAVIGATOR_MODEL = process.env.NANOBROWSER_NAVIGATOR_MODEL || 'gpt-4.1';
+const NANOBROWSER_NAVIGATOR_TEMPERATURE = parseFloat(process.env.NANOBROWSER_NAVIGATOR_TEMPERATURE || '0.3');
+const NANOBROWSER_NAVIGATOR_TOP_P = parseFloat(process.env.NANOBROWSER_NAVIGATOR_TOP_P || '0.85');
 
-const AGENT_VALIDATOR_MODEL = process.env.AGENT_VALIDATOR_MODEL || 'gpt-4.1';
-const AGENT_VALIDATOR_TEMPERATURE = parseFloat(process.env.AGENT_VALIDATOR_TEMPERATURE || '0.1');
-const AGENT_VALIDATOR_TOP_P = parseFloat(process.env.AGENT_VALIDATOR_TOP_P || '0.8');
+const NANOBROWSER_VALIDATOR_MODEL = process.env.NANOBROWSER_VALIDATOR_MODEL || 'gpt-4.1';
+const NANOBROWSER_VALIDATOR_TEMPERATURE = parseFloat(process.env.NANOBROWSER_VALIDATOR_TEMPERATURE || '0.1');
+const NANOBROWSER_VALIDATOR_TOP_P = parseFloat(process.env.NANOBROWSER_VALIDATOR_TOP_P || '0.8');
 
 console.log(`Configuring nanobrowser with OpenAI API key: ${OPENAI_API_KEY}`);
 
@@ -47,9 +47,9 @@ export async function configureNanobrowser() {
   // wait 100ms
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  await configureAgent('planner', AGENT_PLANNER_MODEL, AGENT_PLANNER_TEMPERATURE, AGENT_PLANNER_TOP_P);
-  await configureAgent('navigator', AGENT_NAVIGATOR_MODEL, AGENT_NAVIGATOR_TEMPERATURE, AGENT_NAVIGATOR_TOP_P);
-  await configureAgent('validator', AGENT_VALIDATOR_MODEL, AGENT_VALIDATOR_TEMPERATURE, AGENT_VALIDATOR_TOP_P);
+  await configureAgent('planner', NANOBROWSER_PLANNER_MODEL, NANOBROWSER_PLANNER_TEMPERATURE, NANOBROWSER_PLANNER_TOP_P);
+  await configureAgent('navigator', NANOBROWSER_NAVIGATOR_MODEL, NANOBROWSER_NAVIGATOR_TEMPERATURE, NANOBROWSER_NAVIGATOR_TOP_P);
+  await configureAgent('validator', NANOBROWSER_VALIDATOR_MODEL, NANOBROWSER_VALIDATOR_TEMPERATURE, NANOBROWSER_VALIDATOR_TOP_P);
 }
 
 async function configureAgent(agentName: string, modelName: string, temperature?: number, topP?: number) {
