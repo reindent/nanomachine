@@ -16,7 +16,7 @@ import { router as bridgeRoutes } from './routes/bridge';
 import { AgentEventMessage } from './types/bridge';
 import createVNCService from './vnc/vncService';
 import { configureNanobrowser } from './services/nanobrowserService';
-import { generateStrategyPlan } from './services/agents/strategistAgent';
+import { processUserRequest } from './services/agents/agentCoordinator';
 import bridgeService from './services/bridgeService';
 import { connectToDatabase } from './utils/database';
 import chatRoutes from './routes/chatRoutes';
@@ -324,11 +324,11 @@ io.on('connection', async (socket) => {
       io.emit('chat:message', echoMessage);
       console.log(`Echoed message to all clients: ${message.text} (${message.sender}) with chatId: ${message.chatId}`);
       
-      // If it's a user message, generate a strategy plan and then forward it to the bridge
+      // If it's a user message, process it through our agent system
       if (message.sender === 'user') {
         try {
-          // Generate a strategy plan using the strategist agent
-          const strategyPlan = await generateStrategyPlan(message.text);
+          // Process the user request through the agent coordinator
+          const { strategyPlan, executionResults } = await processUserRequest(message.text, message.chatId);
           
           // Send a system message with the strategy plan
           const strategyMessage = {
@@ -351,23 +351,46 @@ io.on('connection', async (socket) => {
           });
           await strategyDbMessage.save();
           
-          // Forward the original message to the bridge
-          const result = await bridgeService.sendPrompt(message.text);
-          console.log(`Prompt sent to bridge, task ID: ${result.taskId}`);
-          
-          // Create a task record
-          const task = new Task({
-            taskId: result.taskId,
-            prompt: message.text,
-            chatId: message.chatId, // Associate task with the chat
-            status: 'running',
-            archived: false,
-            startTime: new Date()
-          });
-          await task.save();
-
-          // Notify clients that a new task was created
-          io.emit('task:created', task);
+          // Process each execution result
+          for (const executionResult of executionResults) {
+            // For browser tasks, we've already sent them to the bridge and created task records
+            if (executionResult.result.taskId) {
+              // Create a task record for browser tasks
+              const task = new Task({
+                taskId: executionResult.result.taskId,
+                prompt: executionResult.task,
+                chatId: message.chatId,
+                status: 'running',
+                archived: false,
+                startTime: new Date()
+              });
+              await task.save();
+              
+              // Notify clients that a new task was created
+              io.emit('task:created', task);
+            } else {
+              // For filesystem tasks (or other non-browser tasks), send a system message with the result
+              const resultMessage = {
+                id: `msg-${Date.now()}-result-${executionResults.indexOf(executionResult)}`,
+                chatId: message.chatId,
+                text: `**Task Result:**\n\nTask: ${executionResult.task}\nResult: ${executionResult.result.message}`,
+                sender: 'system',
+                timestamp: new Date().toISOString()
+              };
+              
+              // Broadcast the result to all clients
+              io.emit('chat:message', resultMessage);
+              
+              // Save the result message to the database
+              const resultDbMessage = new Message({
+                chatId: message.chatId,
+                role: 'system',
+                content: `**Task Result:**\n\nTask: ${executionResult.task}\nResult: ${executionResult.result.message}`,
+                timestamp: new Date()
+              });
+              await resultDbMessage.save();
+            }
+          }
           
         } catch (error) {
           console.error('Error forwarding message to bridge:', error);
