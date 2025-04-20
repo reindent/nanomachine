@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import socketService, { ChatMessage as SocketChatMessage, AgentEvent } from '../../services/socketService';
 import { API_URL } from '../../config';
 
@@ -229,7 +230,13 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
                     : 'bg-gray-200 text-gray-800'
               }`}
             >
-              <div className="text-sm">{message.text}</div>
+              <div className="text-sm markdown-content">
+                {message.sender === 'user' ? (
+                  message.text
+                ) : (
+                  <ReactMarkdown>{message.text}</ReactMarkdown>
+                )}
+              </div>
               <div className="text-xs mt-1 text-right opacity-70">
                 {formatTime(message.timestamp)}
               </div>
