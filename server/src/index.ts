@@ -15,6 +15,8 @@ import { router as statusRoutes } from './routes/status';
 import { router as bridgeRoutes } from './routes/bridge';
 import { AgentEventMessage } from './types/bridge';
 import createVNCService from './vnc/vncService';
+import { configureNanobrowser } from './services/nanobrowserService';
+import { generateStrategyPlan } from './services/agents/strategistAgent';
 import bridgeService from './services/bridgeService';
 import { connectToDatabase } from './utils/database';
 import chatRoutes from './routes/chatRoutes';
@@ -322,9 +324,34 @@ io.on('connection', async (socket) => {
       io.emit('chat:message', echoMessage);
       console.log(`Echoed message to all clients: ${message.text} (${message.sender}) with chatId: ${message.chatId}`);
       
-      // If it's a user message, forward it to the bridge
+      // If it's a user message, generate a strategy plan and then forward it to the bridge
       if (message.sender === 'user') {
         try {
+          // Generate a strategy plan using the strategist agent
+          const strategyPlan = await generateStrategyPlan(message.text);
+          
+          // Send a system message with the strategy plan
+          const strategyMessage = {
+            id: `msg-${Date.now()}-strategy`,
+            chatId: message.chatId,
+            text: `**Strategy Plan:**\n\n${strategyPlan}`,
+            sender: 'system',
+            timestamp: new Date().toISOString()
+          };
+          
+          // Broadcast the strategy plan to all clients
+          io.emit('chat:message', strategyMessage);
+          
+          // Save the strategy message to the database
+          const strategyDbMessage = new Message({
+            chatId: message.chatId,
+            role: 'system',
+            content: `**Strategy Plan:**\n\n${strategyPlan}`,
+            timestamp: new Date()
+          });
+          await strategyDbMessage.save();
+          
+          // Forward the original message to the bridge
           const result = await bridgeService.sendPrompt(message.text);
           console.log(`Prompt sent to bridge, task ID: ${result.taskId}`);
           
