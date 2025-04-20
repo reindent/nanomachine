@@ -6,6 +6,8 @@
 import { generateStrategyPlan } from './strategistAgent';
 import { executeTask } from './executorAgent';
 import { parseTasks } from './taskParser';
+import bridgeService from '../bridgeService';
+import { EventEmitter } from 'events';
 
 /**
  * Result of a task execution
@@ -13,6 +15,30 @@ import { parseTasks } from './taskParser';
 interface TaskExecutionResult {
   task: string;
   result: any;
+}
+
+/**
+ * Creates a promise that will resolve when a task is completed
+ * This uses the bridge service event system instead of polling
+ * @param taskId The task ID to wait for
+ * @returns A promise that resolves when the task is completed
+ */
+function createTaskCompletionPromise(taskId: string): Promise<void> {
+  return new Promise((resolve) => {
+    // One-time event listener for task completion
+    const taskUpdateListener = (update: any) => {
+      if (update.taskId === taskId && (update.type === 'task_result' || update.type === 'task_error')) {
+        // Task has completed or errored out, clean up listener and resolve
+        bridgeService.onTaskUpdate(taskUpdateListener);
+        console.log(`Task ${taskId} completed with status: ${update.type}`);
+        resolve();
+      }
+    };
+    
+    // Register the listener
+    bridgeService.onTaskUpdate(taskUpdateListener);
+    console.log(`Waiting for completion of task ${taskId}...`);
+  });
 }
 
 /**
@@ -43,6 +69,14 @@ export async function processUserRequest(userRequest: string, chatId: string): P
     for (const task of tasks) {
       console.log(`Executing task: ${task}`);
       const result = await executeTask(task, chatId);
+      
+      // If this is a browser task with a taskId, wait for it to complete using an event
+      if (result.taskId) {
+        console.log(`Browser task ${result.taskId} started, waiting for completion event...`);
+        await createTaskCompletionPromise(result.taskId);
+        console.log(`Browser task ${result.taskId} completed, continuing execution`);
+      }
+      
       executionResults.push({
         task,
         result

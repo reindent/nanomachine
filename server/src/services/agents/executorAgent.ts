@@ -6,9 +6,21 @@
  */
 import 'dotenv/config';
 import { ChatOpenAI } from "@langchain/openai";
-import { PromptTemplate } from "@langchain/core/prompts";
-import { StringOutputParser } from "@langchain/core/output_parsers";
 import bridgeService from '../bridgeService';
+import { z } from "zod";
+
+/**
+ * Schema for the executor response
+ */
+const ExecutorToolSchema = z.object({
+  tool: z.enum(['BROWSER', 'FILESYSTEM']),
+  reasoning: z.string()
+});
+
+/**
+ * Type for the executor response
+ */
+type ExecutorToolResponse = z.infer<typeof ExecutorToolSchema>;
 
 // Get API key from environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -17,30 +29,8 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const executorModel = new ChatOpenAI({
   openAIApiKey: OPENAI_API_KEY,
   modelName: process.env.EXECUTOR_MODEL || "o4-mini",
+  // temperature: 0.2,
 });
-
-// Create a prompt template for the executor
-const executorPrompt = PromptTemplate.fromTemplate(`
-You are an Executor AI agent that executes tasks from a strategy plan.
-Your job is to analyze each task and determine which tool to use to execute it.
-
-Task: {task}
-
-You have two tools available:
-1. Browser - For web browsing tasks (opening browser, navigating to websites, searching online)
-2. Filesystem - For file operations (creating, reading, writing files)
-
-Determine which tool to use for this task and explain your reasoning.
-If the task involves browsing or web operations, respond with "TOOL: BROWSER".
-If the task involves file operations, respond with "TOOL: FILESYSTEM".
-
-Your response:
-`);
-
-// Create a chain for the executor
-const executorChain = executorPrompt
-  .pipe(executorModel)
-  .pipe(new StringOutputParser());
 
 /**
  * Tool interface for executor agent
@@ -108,36 +98,52 @@ export async function executeTask(task: string, chatId: string): Promise<any> {
   try {
     console.log(`Determining tool for task: ${task}`);
     
-    // Determine which tool to use
-    const toolDecision = await executorChain.invoke({
-      task,
-    });
+    // Create system message with instructions
+    const systemMessage = {
+      role: 'system' as const,
+      content: `
+        You are an Executor AI agent that executes tasks from a strategy plan.
+        Your job is to analyze each task and determine which tool to use to execute it.
+        
+        You have these tools available:
+        1. BROWSER - For web browsing tasks (navigating to websites, searching online)
+        2. FILESYSTEM - For file operations (creating, reading, writing files)
+        
+        Determine which tool to use for this task and explain your reasoning clearly.
+      `
+    };
     
-    console.log(`Tool decision: ${toolDecision}`);
+    // Prepare messages for the conversation
+    const messages = [
+      systemMessage,
+      {
+        role: 'user' as const,
+        content: `Task: ${task}`
+      }
+    ];
     
-    // Extract the tool name from the decision
-    const toolMatch = toolDecision.match(/TOOL: (\w+)/);
-    if (!toolMatch) {
-      console.error(`Invalid tool decision: ${toolDecision}`);
-      return {
-        success: false,
-        message: `Could not determine appropriate tool for task: ${task}`
-      };
-    }
+    // Configure the model for structured output
+    const structuredOutputModel = executorModel.withStructuredOutput(ExecutorToolSchema);
     
-    const toolName = toolMatch[1].toUpperCase();
+    // Use structured output to determine the tool
+    const toolResponse = await structuredOutputModel.invoke(messages);
+    console.log(`Tool decision:`, JSON.stringify(toolResponse, null, 2));
+    
+    // Extract the tool name and reasoning from the structured response
+    const { tool: toolName, reasoning } = toolResponse;
     
     // Check if the tool exists
     if (!tools[toolName]) {
       console.error(`Unknown tool: ${toolName}`);
       return {
         success: false,
-        message: `Unknown tool: ${toolName}`
+        message: `Unknown tool: ${toolName}. Reasoning provided: ${reasoning}`
       };
     }
     
     // Execute the task with the selected tool
     console.log(`Executing task with ${toolName} tool: ${task}`);
+    console.log(`Reasoning: ${reasoning}`);
     return await tools[toolName].execute(task, chatId);
   } catch (error) {
     console.error('Error executing task:', error);
