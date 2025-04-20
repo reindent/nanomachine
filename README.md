@@ -99,6 +99,14 @@ The Docker container provides an isolated environment for running the Nanobrowse
 
 The container is based on a minimal Debian Linux image optimized for browser automation.
 
+### Nanobrowser
+
+[Nanobrowser](https://github.com/nanobrowser) is a browser automation Chrome extension that allows you to control your browser, it's based on [Browser Use](https://github.com/browser-use)
+
+Nanomachine interacts with it using a [forked version of it](https://github.com/reindent/nanobrowser) that exposes endpoints to operate and configure it.
+
+The original project is available at [nanobrowser/nanobrowser](https://github.com/nanobrowser/nanobrowser).
+
 ## Getting Started
 
 ### Prerequisites
