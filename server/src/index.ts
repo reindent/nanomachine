@@ -16,7 +16,8 @@ import { router as bridgeRoutes } from './routes/bridge';
 import { AgentEventMessage } from './types/bridge';
 import createVNCService from './vnc/vncService';
 import { configureNanobrowser } from './services/nanobrowserService';
-import { processUserRequest } from './services/agents/agentCoordinator';
+import { processUserRequest, configureAgentCoordinator } from './services/agents/agentCoordinator';
+import { configureExecutorAgent } from './services/agents/executorAgent';
 import bridgeService from './services/bridgeService';
 import { connectToDatabase } from './utils/database';
 import chatRoutes from './routes/chatRoutes';
@@ -37,6 +38,13 @@ let activeSessionCount = 0;
 
 // Initialize VNC service
 createVNCService(io);
+
+// Configure agent coordinator with the socket.io instance
+configureAgentCoordinator(io);
+
+// Configure executor agent with the socket.io instance
+configureExecutorAgent(io);
+
 const PORT = process.env.SERVER_PORT || 3100;
 
 // Function to broadcast system status to all connected clients

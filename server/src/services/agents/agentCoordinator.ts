@@ -8,11 +8,23 @@ import { executeTask } from './executorAgent';
 import { parseTasks } from './taskParser';
 import bridgeService from '../bridgeService';
 import { EventEmitter } from 'events';
+import { Server } from 'socket.io';
+
+// Socket.io instance reference
+let io: Server;
+
+/**
+ * Configure the agent coordinator with the Socket.IO server instance
+ * @param socketIo The Socket.IO server instance
+ */
+export function configureAgentCoordinator(socketIo: Server) {
+  io = socketIo;
+}
 
 /**
  * Result of a task execution
  */
-interface TaskExecutionResult {
+export interface TaskExecutionResult {
   task: string;
   result: any;
 }
@@ -58,6 +70,17 @@ export async function processUserRequest(userRequest: string, chatId: string): P
     // Generate a strategy plan using the strategist agent
     const strategyPlan = await generateStrategyPlan(userRequest);
     console.log(`Generated strategy plan: ${strategyPlan}`);
+    
+    // Send the strategy plan as a message to the client if io is available
+    if (io) {
+      io.emit('chat:message', {
+        id: `strategy-${Date.now()}`,
+        chatId,
+        text: `**Strategy Plan:**\n\n${strategyPlan}`,
+        sender: 'agent',
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // Parse tasks from the strategy plan
     const tasks = parseTasks(strategyPlan);

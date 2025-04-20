@@ -5,9 +5,10 @@
  * It has two tools: browser and filesystem.
  */
 import 'dotenv/config';
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI } from '@langchain/openai';
 import bridgeService from '../bridgeService';
 import { z } from "zod";
+import { Server } from 'socket.io';
 
 /**
  * Schema for the executor response
@@ -31,6 +32,17 @@ const executorModel = new ChatOpenAI({
   modelName: process.env.EXECUTOR_MODEL || "o4-mini",
   // temperature: 0.2,
 });
+
+// Socket.io instance reference
+let io: Server;
+
+/**
+ * Configure the executor agent with the Socket.IO server instance
+ * @param socketIo The Socket.IO server instance
+ */
+export function configureExecutorAgent(socketIo: Server) {
+  io = socketIo;
+}
 
 /**
  * Tool interface for executor agent
@@ -98,39 +110,41 @@ export async function executeTask(task: string, chatId: string): Promise<any> {
   try {
     console.log(`Determining tool for task: ${task}`);
     
-    // Create system message with instructions
-    const systemMessage = {
-      role: 'system' as const,
-      content: `
-        You are an Executor AI agent that executes tasks from a strategy plan.
-        Your job is to analyze each task and determine which tool to use to execute it.
-        
-        You have these tools available:
-        1. BROWSER - For web browsing tasks (navigating to websites, searching online)
-        2. FILESYSTEM - For file operations (creating, reading, writing files)
-        
-        Determine which tool to use for this task and explain your reasoning clearly.
-      `
-    };
-    
-    // Prepare messages for the conversation
-    const messages = [
-      systemMessage,
-      {
-        role: 'user' as const,
-        content: `Task: ${task}`
-      }
-    ];
-    
     // Configure the model for structured output
     const structuredOutputModel = executorModel.withStructuredOutput(ExecutorToolSchema);
     
-    // Use structured output to determine the tool
+    // Create messages for the chat model
+    const messages = [
+      {
+        role: 'system' as const,
+        content: `You are an AI agent deciding which tool to use for a given task. 
+        Choose the most appropriate tool from the available options.
+        Provide clear reasoning for your decision.`
+      },
+      {
+        role: 'user' as const,
+        content: `Task: ${task}\n\nAvailable tools:\n1. BROWSER - Use for web browsing, searching, and interacting with websites\n2. FILESYSTEM - Use for file operations, creating, reading, or writing files\n\nWhich tool should I use for this task? Respond with tool name and reasoning.`
+      }
+    ];
+
+    // Get structured output from the model
     const toolResponse = await structuredOutputModel.invoke(messages);
-    console.log(`Tool decision:`, JSON.stringify(toolResponse, null, 2));
     
-    // Extract the tool name and reasoning from the structured response
+    // Extract the tool and reasoning
     const { tool: toolName, reasoning } = toolResponse;
+    console.log(`Selected tool: ${toolName}`);
+    console.log(`Reasoning: ${reasoning}`);
+    
+    // Send the reasoning as a message to the client if io is available
+    if (io && chatId) {
+      io.emit('chat:message', {
+        id: `reasoning-${Date.now()}`,
+        chatId,
+        text: `**Tool Selection:**\n\nTask: ${task}\nSelected Tool: ${toolName}\nReasoning: ${reasoning}`,
+        sender: 'agent',
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // Check if the tool exists
     if (!tools[toolName]) {
