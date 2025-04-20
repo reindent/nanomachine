@@ -2,7 +2,7 @@
  * Executor Agent Service
  * 
  * This service implements an AI agent that executes tasks from the strategist's plan.
- * It has two tools: browser and filesystem.
+ * It has two tools: browser and shell.
  */
 import 'dotenv/config';
 import { ChatOpenAI } from '@langchain/openai';
@@ -14,8 +14,9 @@ import { Server } from 'socket.io';
  * Schema for the executor response
  */
 const ExecutorToolSchema = z.object({
-  tool: z.enum(['BROWSER', 'FILESYSTEM']),
-  reasoning: z.string()
+  tool: z.enum(['BROWSER', 'SHELL']),
+  reasoning: z.string(),
+  script: z.string().optional().describe('Shell script to execute (for SHELL tool)')
 });
 
 /**
@@ -47,9 +48,9 @@ export function configureExecutorAgent(socketIo: Server) {
 /**
  * Tool interface for executor agent
  */
-interface Tool {
+export interface Tool {
   name: string;
-  execute: (task: string, chatId: string) => Promise<any>;
+  execute: (task: string, chatId: string, params?: any) => Promise<any>;
 }
 
 /**
@@ -78,25 +79,15 @@ const browserTool: Tool = {
   }
 };
 
-/**
- * Filesystem tool for file operations (mocked for now)
- */
-const filesystemTool: Tool = {
-  name: 'FILESYSTEM',
-  execute: async (task: string, chatId: string) => {
-    console.log(`Executing filesystem task (mocked): ${task}`);
-    // Mock implementation - will be developed later
-    return {
-      success: true,
-      message: `Filesystem operation simulated: ${task}`
-    };
-  }
-};
+// Import the shell tool
+async function importShellTool() {
+  const { shellTool } = await import('./tools/shellTool');
+  return shellTool;
+}
 
 // Map of available tools
 const tools: Record<string, Tool> = {
-  BROWSER: browserTool,
-  FILESYSTEM: filesystemTool
+  BROWSER: browserTool
 };
 
 /**
@@ -123,7 +114,13 @@ export async function executeTask(task: string, chatId: string): Promise<any> {
       },
       {
         role: 'user' as const,
-        content: `Task: ${task}\n\nAvailable tools:\n1. BROWSER - Use for web browsing, searching, and interacting with websites\n2. FILESYSTEM - Use for file operations, creating, reading, or writing files\n\nWhich tool should I use for this task? Respond with tool name and reasoning.`
+        content: `Task: ${task}
+
+Available tools:
+1. BROWSER - Use for web browsing, searching, and interacting with websites
+2. SHELL - Use for terminal operations, executing commands, and file operations
+
+If you choose SHELL, also provide a shell script that accomplishes the task.`
       }
     ];
 
@@ -146,19 +143,27 @@ export async function executeTask(task: string, chatId: string): Promise<any> {
       });
     }
     
-    // Check if the tool exists
-    if (!tools[toolName]) {
+    // Log execution information
+    console.log(`Executing task with ${toolName} tool: ${task}`);
+    console.log(`Reasoning: ${reasoning}`);
+    
+    // Handle tool execution based on type
+    if (toolName === 'SHELL') {
+      // For SHELL tool, import and execute it directly
+      const script = toolResponse.script || '';
+      const shellTool = await importShellTool();
+      return await shellTool.execute(task, chatId, { script });
+    } else if (toolName === 'BROWSER') {
+      // For BROWSER tool, use the browser tool
+      return await browserTool.execute(task, chatId);
+    } else {
+      // Unknown tool
       console.error(`Unknown tool: ${toolName}`);
       return {
         success: false,
         message: `Unknown tool: ${toolName}. Reasoning provided: ${reasoning}`
       };
     }
-    
-    // Execute the task with the selected tool
-    console.log(`Executing task with ${toolName} tool: ${task}`);
-    console.log(`Reasoning: ${reasoning}`);
-    return await tools[toolName].execute(task, chatId);
   } catch (error) {
     console.error('Error executing task:', error);
     return {
