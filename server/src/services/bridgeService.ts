@@ -6,6 +6,8 @@ import { Task, Message } from '../models';
 import { configureNanobrowser } from './nanobrowserService';
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:8787';
+const AZURE_OPENAI_API_KEY = process.env.AZURE_OPENAI_API_KEY || '';
+const AZURE_OPENAI_ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT || '';
 
 /**
  * Agent event message interface
@@ -29,7 +31,7 @@ interface AgentEventMessage {
  */
 // Import our own types for model configuration
 interface LLMProvider {
-  id: string;         // Provider ID (e.g., 'openai', 'anthropic', or custom ID)
+  id: string;         // Provider ID (e.g., 'openai', 'anthropic', 'azure_openai', or custom ID)
   name?: string;      // Display name
   apiKey: string;     // API key
   baseUrl?: string;   // Optional base URL for custom providers
