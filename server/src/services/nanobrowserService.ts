@@ -3,6 +3,8 @@ import { AgentModelMessage, LLMProviderMessage } from '../../../bridge/src/types
 
 const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:8787';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const AZURE_OPENAI_API_KEY = process.env.AZURE_OPENAI_API_KEY || '';
+const AZURE_OPENAI_ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT || '';
 
 // Parse model names from environment variable or use defaults
 const MODEL_NAMES = process.env.LLM_MODEL_NAMES 
@@ -23,9 +25,10 @@ const NANOBROWSER_VALIDATOR_TEMPERATURE = parseFloat(process.env.NANOBROWSER_VAL
 const NANOBROWSER_VALIDATOR_TOP_P = parseFloat(process.env.NANOBROWSER_VALIDATOR_TOP_P || '0.8');
 
 console.log(`Configuring nanobrowser with OpenAI API key: ${OPENAI_API_KEY}`);
+console.log(`Configuring nanobrowser with Azure OpenAI API key: ${AZURE_OPENAI_API_KEY}`);
 
 export async function configureNanobrowser() {
-  const providerConfig: LLMProviderMessage = {
+  const openaiProviderConfig: LLMProviderMessage = {
     type: 'llm_provider',
     action: 'create',
     provider: {
@@ -36,12 +39,32 @@ export async function configureNanobrowser() {
     }
   };
 
+  const azureProviderConfig: LLMProviderMessage = {
+    type: 'llm_provider',
+    action: 'create',
+    provider: {
+      id: 'azure_openai',
+      name: 'Azure OpenAI',
+      apiKey: AZURE_OPENAI_API_KEY,
+      baseUrl: AZURE_OPENAI_ENDPOINT,
+      modelNames: MODEL_NAMES
+    }
+  };
+
   await fetch(`${BRIDGE_URL}/provider`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(providerConfig)
+    body: JSON.stringify(openaiProviderConfig)
+  });
+
+  await fetch(`${BRIDGE_URL}/provider`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(azureProviderConfig)
   });
 
   // wait 100ms

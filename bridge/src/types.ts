@@ -58,7 +58,7 @@ export interface AgentEventMessage extends WebSocketMessage {
 }
 
 export interface LLMProvider {
-  id: string;         // Provider ID (e.g., 'openai', 'anthropic', or custom ID)
+  id: string;         // Provider ID (e.g., 'openai', 'anthropic', 'azure_openai', or custom ID)
   name?: string;      // Display name
   apiKey: string;     // API key
   baseUrl?: string;   // Optional base URL for custom providers
