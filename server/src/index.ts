@@ -113,120 +113,6 @@ async function saveMessageToChat(chatId: string, content: string | undefined, ro
   }
 }
 
-// Set up bridge event forwarding to Socket.IO clients
-bridgeService.onAgentEvent(async (event: AgentEventMessage) => {
-  console.log(`Forwarding agent event to clients: ${event.event.state}`);
-  
-  // Emit the event to all connected clients
-  io.emit('agent:event', event);
-  console.log(`Emitted 'agent:event' to ${io.engine.clientsCount} clients`);
-  
-  // Store meaningful responses from validator or planner
-  if ((event.event.actor === 'validator' || event.event.actor === 'planner') && 
-      event.event.state === 'step.ok' && 
-      event.event.data.details) {
-    lastResponses[event.taskId] = event.event.data.details;
-    console.log(`Stored last response for task ${event.taskId}: ${event.event.data.details}`);
-  }
-  
-  // Find the associated task
-  const task = await Task.findOne({ taskId: event.taskId });
-  if (task && task.chatId) {
-    // Handle task failure
-    if (event.event.state === 'task.fail') {
-      const messageText = event.event.data.message || event.event.data.details || `${event.event.actor}: ${event.event.state}`;
-      const messageRole = event.event.actor === 'system' ? 'system' : 'agent';
-      
-      // Emit chat message to clients
-      const chatMessage = {
-        id: `msg-${Date.now()}`,
-        chatId: task.chatId,
-        text: messageText,
-        sender: messageRole,
-        timestamp: new Date().toISOString()
-      };
-      io.emit('chat:message', chatMessage);
-      console.log(`Task failed. Emitted system error message: ${chatMessage.text}`);
-      
-      // Save message to database for this chat
-      saveMessageToChat(task.chatId, messageText, messageRole, event.taskId);
-
-      // Clean up stored response
-      delete lastResponses[event.taskId];
-    }
-  
-    // When task is completed (task.ok), send the last meaningful response as a chat message
-    if (event.event.state === 'task.ok') {
-      const lastResponse = lastResponses[event.taskId];
-      if (lastResponse) {
-        const chatMessage = {
-          id: `msg-${Date.now()}`,
-          chatId: task.chatId,
-          text: lastResponse,
-          sender: 'agent',
-          timestamp: new Date().toISOString()
-        };
-        io.emit('chat:message', chatMessage);
-        console.log(`Task completed. Emitted final response: ${lastResponse}`);
-        
-        // Save message to database for this chat
-        saveMessageToChat(task.chatId, lastResponse, 'agent', event.taskId);
-
-        // Clean up stored response
-        delete lastResponses[event.taskId];
-      }
-    }
-  }
-});
-
-// Listen for task updates from bridge
-bridgeService.onTaskUpdate(async(message) => {
-  console.log(`Task update received: ${message.type}`);
-  
-  // Update task status based on task results/errors
-  const task = await Task.findOne({ taskId: message.taskId });
-  if (task) {
-    try {
-      // Update task status
-      if (message.type === 'task_result') {
-        task.status = 'completed';
-        task.result = message.result;
-        task.endTime = new Date();
-        await task.save();
-        console.log(`Task ${message.taskId} completed`);
-        io.emit('task:completed', task);
-      } else if (message.type === 'task_error') {
-        task.status = 'failed';
-        task.error = message.error;
-        task.endTime = new Date();
-        await task.save();
-        console.log(`Task ${message.taskId} failed`);
-        io.emit('task:failed', task);
-      }
-    } catch (error) {
-      console.error('Error updating task:', error);
-    }
-  }
-  
-  // For task errors, send chat message and save to database
-  if (message.type === 'task_error') {
-    const timestamp = new Date();
-    let content, role;
-    
-    content = `Error: ${message.error}`;
-    role = 'system';
-    
-    // Emit message to clients
-    const socketMessage = {
-      id: `${message.type}-${Date.now()}`,
-      text: content,
-      sender: role,
-      timestamp: timestamp.toISOString()
-    };
-    io.emit('chat:message', socketMessage);
-  }
-});
-
 // Socket.IO event handlers
 io.on('connection', async (socket) => {
   console.log(`Client connected: ${socket.id}`);
@@ -336,7 +222,7 @@ io.on('connection', async (socket) => {
       if (message.sender === 'user') {
         try {
           // Process the user request through the agent coordinator
-          const { strategyPlan, executionResults } = await processUserRequest(message.text, message.chatId);
+          const { strategyPlan, executionResults, finalResponse } = await processUserRequest(message.text, message.chatId);
           
           // Send a system message with the strategy plan
           const strategyMessage = {
@@ -350,7 +236,7 @@ io.on('connection', async (socket) => {
           // Broadcast the strategy plan to all clients
           io.emit('chat:message', strategyMessage);
           
-          // Save the strategy message to the database
+          // Save the strategy plan to the database
           const strategyDbMessage = new Message({
             chatId: message.chatId,
             role: 'system',
@@ -363,19 +249,30 @@ io.on('connection', async (socket) => {
           for (const executionResult of executionResults) {
             // For browser tasks, we've already sent them to the bridge and created task records
             if (executionResult.result.taskId) {
-              // Create a task record for browser tasks
-              const task = new Task({
-                taskId: executionResult.result.taskId,
-                prompt: executionResult.task,
-                chatId: message.chatId,
-                status: 'running',
-                archived: false,
-                startTime: new Date()
-              });
-              await task.save();
-              
-              // Notify clients that a new task was created
-              io.emit('task:created', task);
+              // Check if a task with this ID already exists
+              const existingTask = await Task.findOne({ taskId: executionResult.result.taskId });
+
+              if (!existingTask) {
+                try {
+                  // Create a task record for browser tasks
+                  const task = new Task({
+                    taskId: executionResult.result.taskId,
+                    prompt: executionResult.task,
+                    chatId: message.chatId,
+                    status: 'running',
+                    archived: false,
+                    startTime: new Date()
+                  });
+                  await task.save();
+                  
+                  // Notify clients that a new task was created
+                  io.emit('task:created', task);
+                } catch (error) {
+                  console.error(`Error creating task record: ${error}`);
+                }
+              } else {
+                console.log(`Task ${executionResult.result.taskId} already exists, skipping creation`);
+              }
             } else {
               // For filesystem tasks (or other non-browser tasks), send a system message with the result
               const resultMessage = {
@@ -399,6 +296,27 @@ io.on('connection', async (socket) => {
               await resultDbMessage.save();
             }
           }
+          
+          // After all tasks are completed, send the final response to the user
+          const finalResponseMessage = {
+            id: `msg-${Date.now()}-final`,
+            chatId: message.chatId,
+            text: finalResponse,
+            sender: 'agent',
+            timestamp: new Date().toISOString()
+          };
+          
+          // Broadcast the final response to all clients
+          io.emit('chat:message', finalResponseMessage);
+          
+          // Save the final response to the database
+          const finalResponseDbMessage = new Message({
+            chatId: message.chatId,
+            role: 'agent',
+            content: finalResponse,
+            timestamp: new Date()
+          });
+          await finalResponseDbMessage.save();
           
         } catch (error) {
           console.error('Error forwarding message to bridge:', error);

@@ -7,6 +7,7 @@ import { Tool } from '../executorAgent';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
+const NANOMACHINE_CONTAINER_NAME = 'nanomachine-vm';
 const execPromise = promisify(exec);
 
 /**
@@ -17,7 +18,7 @@ const execPromise = promisify(exec);
 async function executeInDocker(command: string): Promise<string> {
   try {
     // Simple docker exec command to run the script in the container
-    const dockerCommand = `docker exec nanomachine-vm bash -c "${command.replace(/"/g, '\\"')}"`;
+    const dockerCommand = `docker exec ${NANOMACHINE_CONTAINER_NAME} bash -c "${command.replace(/"/g, '\\"')}"`;
     console.log(`Executing in Docker: ${dockerCommand}`);
     
     const { stdout, stderr } = await execPromise(dockerCommand);
