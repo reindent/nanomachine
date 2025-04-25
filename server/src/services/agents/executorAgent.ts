@@ -9,7 +9,13 @@ import { ChatOpenAI } from '@langchain/openai';
 import { z } from "zod";
 import { Server } from 'socket.io';
 import { taskContextManager } from './contextManager';
-import { StringOutputParser } from '@langchain/core/output_parsers';
+import { createTask, updateTask } from '../taskService';
+import { addMessageToChat } from '../chatService';
+
+// Import the tools
+import { shellTool } from './tools/shellTool';
+import { dataTool } from './tools/dataTool';
+import { browserTool } from './tools/browserTool';
 
 /**
  * Schema for the executor response
@@ -35,73 +41,43 @@ const executorModel = new ChatOpenAI({
   // temperature: 0.2,
 });
 
-// Socket.io instance reference
-let io: Server;
-
 /**
  * Configure the executor agent with the Socket.IO server instance
  * @param socketIo The Socket.IO server instance
  */
-export function configureExecutorAgent(socketIo: Server) {
-  io = socketIo;
-  
-  // Configure the data tool with the Socket.IO instance
-  import('./tools/dataTool').then(({ configureDataTool }) => {
-    configureDataTool(socketIo);
-  });
-  
+export function configureExecutorAgent(socketIo: Server) { 
   // Configure the browser tool with the Socket.IO instance
   import('./tools/browserTool').then(({ configureBrowserTool }) => {
     configureBrowserTool(socketIo);
   });
 }
 
-/**
- * Tool interface for executor agent
- */
 export interface Tool {
   name: string;
-  execute: (task: string, chatId: string, params?: any) => Promise<any>;
+  execute: (task: string, params?: any) => Promise<ToolResponse>;
 }
 
-// Browser tool is now imported from ./tools/browserTool.ts
-
-// Import the shell tool
-async function importShellTool() {
-  const { shellTool } = await import('./tools/shellTool');
-  return shellTool;
+export interface ToolResponse {
+  success: boolean;
+  message: string;
+  data?: any; // TODO: specify type
 }
-
-// Import the data tool
-async function importDataTool() {
-  const { dataTool } = await import('./tools/dataTool');
-  return dataTool;
-}
-
-// Import the browser tool
-async function importBrowserTool() {
-  const { browserTool } = await import('./tools/browserTool');
-  return browserTool;
-}
-
-// Map of available tools
-const tools: Record<string, Tool> = {};
 
 /**
  * Enrich a task with context from previous tasks
  * 
- * @param task The original task to enrich
+ * @param prompt The original task to enrich
  * @param chatId The chat ID to retrieve context for
  * @returns The enriched task
  */
-async function enrichTaskWithContext(task: string, chatId: string): Promise<string> {
+async function enrichTaskWithContext(prompt: string, chatId: string): Promise<string> {
   // Get context from previous tasks
   const context = taskContextManager.getContext(chatId);
   
   // If no context exists, return the original task
   if (!taskContextManager.hasContext(chatId)) {
     console.log('No context available for enrichment');
-    return task;
+    return prompt;
   }
   
   console.log(`Enriching task with context: ${JSON.stringify(context)}`);
@@ -122,7 +98,7 @@ async function enrichTaskWithContext(task: string, chatId: string): Promise<stri
     },
     {
       role: 'user' as const,
-      content: `Original task: ${task}
+      content: `Original task: ${prompt}
       
       Available context from previous tasks:
       ${JSON.stringify(context, null, 2)}
@@ -136,7 +112,7 @@ async function enrichTaskWithContext(task: string, chatId: string): Promise<stri
   const response = await contextEnricher.invoke(messages);
   const enrichedTask = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
   
-  console.log(`Original task: ${task}`);
+  console.log(`Original task: ${prompt}`);
   console.log(`Enriched task: ${enrichedTask}`);
   
   return enrichedTask;
@@ -203,14 +179,17 @@ async function extractAndStoreContext(task: string, result: any, chatId: string)
 /**
  * Determine which tool to use for a task and execute it
  * 
- * @param task The task to execute
+ * @param prompt The task prompt to execute
  * @param chatId The chat ID associated with the task
  * @returns The result of the tool execution
  */
-export async function executeTask(task: string, chatId: string): Promise<any> {
-  try {
+export async function executeTask(prompt: string, chatId: string): Promise<any> {
+  try {    
     // Enrich the task with context from previous tasks
-    const enrichedTask = await enrichTaskWithContext(task, chatId);
+    const enrichedTask = await enrichTaskWithContext(prompt, chatId);
+
+    // Create a task record with the original task from the strategist
+    const task = await createTask(prompt, enrichedTask, chatId, 'pending');
     
     console.log(`Determining tool for task: ${enrichedTask}`);
     
@@ -230,7 +209,7 @@ export async function executeTask(task: string, chatId: string): Promise<any> {
         content: `Task: ${enrichedTask}
 
 Available tools:
-1. BROWSER - Use for web browsing, searching, and interacting with websites
+1. BROWSER - Use for web browsing, searching, and interacting with websites, might also be used to filter search results
 2. SHELL - Use for terminal operations, executing commands, and file operations
 3. DATA - Use for processing, cleaning, deduplicating, ranking, or presenting data from previous tasks
 
@@ -241,7 +220,12 @@ Choose DATA for tasks that involve:
 - Ranking or sorting information
 - Merging data from multiple sources
 - Presenting or formatting results
-- Analyzing patterns in collected data`
+- Analyzing patterns in collected data
+
+ONLY USE DATA IF YOU HAVE ENOUGH INFORMATION TO COMPLETE THE TASK.
+
+**NEVER MAKE UP DATA OR INFORMATION THAT IS NOT AVAILABLE**
+`
       }
     ];
 
@@ -253,43 +237,44 @@ Choose DATA for tasks that involve:
     console.log(`Selected tool: ${toolName}`);
     console.log(`Reasoning: ${reasoning}`);
     
-    // Send the reasoning as a message to the client if io is available
-    if (io && chatId) {
-      io.emit('chat:message', {
-        id: `reasoning-${Date.now()}`,
-        chatId,
-        text: `**Tool Selection:**\n\nTask: ${enrichedTask}\nSelected Tool: ${toolName}\nReasoning: ${reasoning}`,
-        sender: 'agent',
-        timestamp: new Date().toISOString()
-      });
-    }
+    // Update the task record with the tool type
+    await updateTask(task.id, 'running', { type: toolName.toLowerCase() });
+    
+    // Send the reasoning as a message to the client
+    await addMessageToChat(chatId, `**Tool Selection:**\n\nTask: ${enrichedTask}\nSelected Tool: ${toolName}\nReasoning: ${reasoning}`, 'system', true);
     
     // Log execution information
     console.log(`Executing task with ${toolName} tool: ${enrichedTask}`);
     
+    // Get context from previous tasks
+    const context = taskContextManager.getContext(chatId);
+
     // Execute the task with the selected tool
     let result;
     if (toolName === 'SHELL') {
-      // For SHELL tool, import and execute it directly
       const script = toolResponse.script || '';
-      const shellTool = await importShellTool();
-      result = await shellTool.execute(enrichedTask, chatId, { script });
+      result = await shellTool(enrichedTask, { context, task, script });
     } else if (toolName === 'BROWSER') {
-      // For BROWSER tool, import and execute it
-      const browserTool = await importBrowserTool();
-      result = await browserTool.execute(enrichedTask, chatId);
+      result = await browserTool(enrichedTask, { context, task });
     } else if (toolName === 'DATA') {
-      // For DATA tool, import and execute it
-      const dataTool = await importDataTool();
-      result = await dataTool.execute(enrichedTask, chatId);
+      result = await dataTool(enrichedTask, { context, task });
     } else {
-      // Unknown tool
       console.error(`Unknown tool: ${toolName}`);
       result = {
         success: false,
         message: `Unknown tool: ${toolName}. Reasoning provided: ${reasoning}`
       };
     }
+   
+    // Send the processed data as a message to the client
+    if(!result.success) {
+      console.error(`Error executing task: ${result.message}`);
+    }
+    await addMessageToChat(chatId, result.message, 'system', true);
+
+    // Update the task status based on the result
+    const status = result.success ? 'completed' : 'error';
+    await updateTask(task.id, status, result);
     
     // Extract and store context from the result
     if (result.success) {

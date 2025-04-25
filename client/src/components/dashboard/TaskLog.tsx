@@ -3,6 +3,7 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import socketService from '../../services/socketService';
 
 export interface Task {
+  _id: string;
   chatId: string | null;
   taskId: string;
   status: 'completed' | 'running' | 'idle' | 'failed' | 'cancelled' | 'pending';
@@ -40,37 +41,29 @@ const TaskLog: React.FC<TaskLogProps> = ({ chatId, tasks: initialTasks, isLoadin
     // Listen for new tasks
     const createdUnsubscribe = socketService.onTaskCreated((newTask) => {
       console.log('New task created:', newTask);
+      // New task must be in current chat
+      if (chatId && newTask.chatId !== chatId) return;
       // Add the new task to the beginning of the list
       setTasks(prevTasks => [newTask, ...prevTasks]);
     });
     
     // Listen for completed tasks
-    const completedUnsubscribe = socketService.onTaskCompleted((updatedTask) => {
-      console.log('Task completed:', updatedTask);
+    const updateUnsubscribe = socketService.onTaskUpdate((updatedTask) => {
+      console.log('Task updated:', updatedTask);
+      // Updated task must be in current chat
+      if (chatId && updatedTask.chatId !== chatId) return;
       // Update the task in the list while preserving all fields
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.taskId === updatedTask.taskId ? updatedTask : task
-        )
-      );
-    });
-    
-    // Listen for failed tasks
-    const failedUnsubscribe = socketService.onTaskFailed((updatedTask) => {
-      console.log('Task failed:', updatedTask);
-      // Update the task in the list while preserving all fields
-      setTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.taskId === updatedTask.taskId ? updatedTask : task
-        )
-      );
+      setTasks((prevTasks) => {
+        return prevTasks.map(task => 
+          task._id === updatedTask._id ? updatedTask : task
+        );
+      });
     });
     
     // Cleanup subscriptions on component unmount
     return () => {
       createdUnsubscribe();
-      completedUnsubscribe();
-      failedUnsubscribe();
+      updateUnsubscribe();
     };
   }, []);
   const handleArchive = (taskId: string) => {
@@ -165,7 +158,7 @@ const TaskLog: React.FC<TaskLogProps> = ({ chatId, tasks: initialTasks, isLoadin
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {tasks.map((task) => (
-                  <tr key={task.taskId} className="hover:bg-gray-50">
+                  <tr key={task._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{task.prompt}</div>
                       {getProgressBar(task)}
@@ -185,7 +178,7 @@ const TaskLog: React.FC<TaskLogProps> = ({ chatId, tasks: initialTasks, isLoadin
                         <a href="#" className="text-yellow-600 hover:text-yellow-900 mr-4">Stop</a>
                       )}
                       <button 
-                        onClick={() => handleArchive(task.taskId)}
+                        onClick={() => handleArchive(task._id)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete

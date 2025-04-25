@@ -34,6 +34,11 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
   useEffect(() => {
     fetchChats();
     
+    // On connect, fetch chats
+    socketService.onConnectionStatus((connected) => {
+      if (connected) fetchChats();
+    });
+
     // Listen for new chat creation events
     const chatCreatedUnsubscribe = socketService.onChatCreated((chat) => {
       console.log('ChatList received new chat notification:', chat);

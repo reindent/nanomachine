@@ -1,11 +1,12 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface ITask extends Document {
-  taskId: string;          // Unique task identifier
-  prompt: string;          // Original task prompt
+  prompt: string;          // Original task prompt from strategist
+  enrichedPrompt?: string; // Task prompt enriched with context
+  type: string;            // Type of task: 'browser', 'shell', 'data'
   tabId?: number;          // Browser tab ID (if applicable)
   chatId?: string;         // Reference to the chat this task belongs to
-  status: string;          // 'pending', 'running', 'completed', 'failed', 'cancelled'
+  status: string;          // 'pending', 'running', 'completed', 'failed', 'cancelled', 'error'
   result?: any;            // Task result (if completed)
   error?: string;          // Error message (if failed)
   archived: boolean;       // Whether this task is archived
@@ -17,15 +18,18 @@ export interface ITask extends Document {
 
 const TaskSchema: Schema = new Schema(
   {
-    taskId: { 
-      type: String, 
-      required: true, 
-      unique: true,
-      index: true 
-    },
     prompt: { 
       type: String, 
       required: true 
+    },
+    enrichedPrompt: { 
+      type: String 
+    },
+    type: { 
+      type: String, 
+      enum: ['browser', 'shell', 'data'],
+      default: 'shell',
+      index: true
     },
     tabId: { 
       type: Number 
@@ -37,7 +41,7 @@ const TaskSchema: Schema = new Schema(
     },
     status: { 
       type: String, 
-      enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+      enum: ['pending', 'running', 'completed', 'failed', 'cancelled', 'error'],
       default: 'pending',
       index: true
     },

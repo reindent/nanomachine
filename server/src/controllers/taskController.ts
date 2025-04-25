@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Task, TaskEvent } from '../models';
 import { v4 as uuidv4 } from 'uuid';
+import { updateTask } from '../services/taskService';
 
 // Get all tasks
 export const getTasks = async (req: Request, res: Response): Promise<void> => {
@@ -37,27 +38,19 @@ export const getTaskById = async (req: Request, res: Response): Promise<void> =>
 // Create a new task
 export const createTask = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { prompt, tabId, taskId = uuidv4() } = req.body;
+    const { prompt, tabId } = req.body;
     
     if (!prompt) {
       res.status(400).json({ error: 'Task prompt is required' });
       return;
     }
     
-    const task = new Task({
-      taskId,
-      prompt,
-      tabId,
-      status: 'pending',
-      startTime: new Date()
-    });
-    
-    await task.save();
+    const task = await createTask(prompt, tabId);
     
     res.status(201).json({
       status: 'success',
       message: 'Task created successfully',
-      taskId: task.taskId
+      task,
     });
   } catch (error) {
     console.error('Error creating task:', error);
@@ -71,28 +64,19 @@ export const updateTaskStatus = async (req: Request, res: Response): Promise<voi
     const { id } = req.params;
     const { status, result, error } = req.body;
     
-    const task = await Task.findOne({ taskId: id });
+    const oldTask = await Task.findById(id);
     
-    if (!task) {
+    if (!oldTask) {
       res.status(404).json({ error: 'Task not found' });
       return;
     }
     
-    if (status) task.status = status;
-    if (result !== undefined) task.result = result;
-    if (error) task.error = error;
-    
-    // If the task is completed, failed, or cancelled, set the end time
-    if (['completed', 'failed', 'cancelled'].includes(status)) {
-      task.endTime = new Date();
-    }
-    
-    await task.save();
+    const task = await updateTask(id, status, result);
     
     res.status(200).json({
       status: 'success',
       message: 'Task updated successfully',
-      taskId: task.taskId
+      taskId: task.id
     });
   } catch (error) {
     console.error('Error updating task:', error);

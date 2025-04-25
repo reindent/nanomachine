@@ -7,11 +7,11 @@ import { generateStrategyPlan } from './strategistAgent';
 import { executeTask } from './executorAgent';
 import { parseTasks } from './taskParser';
 import bridgeService from '../bridgeService';
-import { EventEmitter } from 'events';
 import { Server } from 'socket.io';
 import { taskContextManager } from './contextManager';
 import { ChatOpenAI } from '@langchain/openai';
 import { StringOutputParser } from '@langchain/core/output_parsers';
+import { addMessageToChat } from '../chatService';
 
 // Socket.io instance reference
 let io: Server;
@@ -151,41 +151,41 @@ async function extractContextFromResult(task: string, result: any): Promise<Reco
  */
 async function generateFinalResponse(userRequest: string, executionResults: TaskExecutionResult[], chatId: string): Promise<string> {
   try {
-    // Get the complete context from all tasks
+    console.log('Generating final response to user request');
+    
+    // Create a context processor model
+    const responseGenerator = new ChatOpenAI({
+      openAIApiKey: OPENAI_API_KEY,
+      modelName: process.env.EXECUTOR_MODEL || "o4-mini",
+    });
+    
+    // Get context from previous tasks
     const context = taskContextManager.getContext(chatId);
     
-    // Create a summary of task execution results
-    const taskSummary = executionResults.map((result, index) => {
-      const success = result.result && result.result.success ? 'Succeeded' : 'Failed';
-      const message = result.result && result.result.message ? result.result.message : 'No result message';
-      return `Task ${index + 1}: ${result.task}\nStatus: ${success}\nResult: ${message}`;
-    }).join('\n\n');
-    
-    // Create messages for the response generation
+    // Create messages for the chat model
     const messages = [
       {
         role: 'system' as const,
-        content: `You are an AI assistant that creates a final response to the user based on task execution results.
-        Your job is to assess the level of success in completing the user's request and provide a helpful response.
-        Be concise, direct, and informative. If tasks failed, explain what went wrong and suggest alternatives.
-        If tasks succeeded, summarize the key findings or results. Do not mention the internal task structure.`
+        content: `You are an AI assistant that generates helpful, accurate responses to user requests.
+        Your job is to synthesize the results of multiple tasks into a coherent, comprehensive answer.
+        Be specific and provide concrete information from the task results.`
       },
       {
         role: 'user' as const,
-        content: `Original user request: "${userRequest}"
-        
-        Task execution results:
-        ${taskSummary}
-        
-        Available context:
-        ${JSON.stringify(context, null, 2)}
-        
-        Create a final response to the user that addresses their original request based on the task results.`
+        content: `Original request: ${userRequest}\n\n` +
+          `Task results:\n${executionResults.map(result => 
+            `Task: ${result.task}\nResult: ${JSON.stringify(result.result, null, 2)}\n`
+          ).join('\n')}\n\n` +
+          `Available context:\n${JSON.stringify(context, null, 2)}\n\n` +
+          `Generate a comprehensive response that directly addresses the original request.
+          Incorporate specific details from the task results and context.
+          Format your response in a clear, well-structured way.`
       }
     ];
     
     // Generate the final response
-    const response = await contextProcessor.pipe(new StringOutputParser()).invoke(messages);
+    const response = await responseGenerator.pipe(new StringOutputParser()).invoke(messages);
+    
     return response;
   } catch (error) {
     console.error('Error generating final response:', error);
@@ -211,28 +211,12 @@ export async function processUserRequest(userRequest: string, chatId: string): P
     // Clear any existing context for this chat session
     taskContextManager.clearContext(chatId);
     
-    // Store the original user request in context
-    // NOTE: commented to test what happens if the user request is not stored
-    // taskContextManager.storeContext(chatId, 'userRequest', userRequest);
-    
     // Generate a strategy plan using the strategist agent
     const strategyPlan = await generateStrategyPlan(userRequest);
     console.log(`Generated strategy plan: ${strategyPlan}`);
     
-    // Store the strategy plan in context
-    // NOTE: commented to test what happens if the strategy plan is not stored
-    // taskContextManager.storeContext(chatId, 'strategyPlan', strategyPlan);
-    
-    // Send the strategy plan as a message to the client if io is available
-    if (io) {
-      io.emit('chat:message', {
-        id: `strategy-${Date.now()}`,
-        chatId,
-        text: `**Strategy Plan:**\n\n${strategyPlan}`,
-        sender: 'agent',
-        timestamp: new Date().toISOString()
-      });
-    }
+    // Send the strategy plan as a message to the client
+    await addMessageToChat(chatId, strategyPlan, 'agent', true);
     
     // Parse tasks from the strategy plan
     const tasks = parseTasks(strategyPlan);

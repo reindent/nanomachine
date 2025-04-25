@@ -28,6 +28,7 @@ const fallbackChatMessage : Message = {
   sender: 'agent',
   text: 'Hello! I am Nanomachine, your Virtual Machine AI agent. How can I assist you today?',
   timestamp: new Date().toISOString(),
+  keepTyping: false
 };
 
 export default function ChatInterface({ chatId }: ChatInterfaceProps) {
@@ -57,7 +58,7 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
       // Always show the message if it's for the current chat
       if (chatId && message.chatId === chatId) {
         if (message.sender === 'agent' || message.sender === 'system') {
-          setIsTyping(false);
+          if(!message.keepTyping) setIsTyping(false);
         }
         
         setMessages(prevMessages => [...prevMessages, message]);

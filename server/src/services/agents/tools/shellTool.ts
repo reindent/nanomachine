@@ -3,7 +3,7 @@
  * 
  * A simple tool for executing shell commands in the Docker VM
  */
-import { Tool } from '../executorAgent';
+import { Tool, ToolResponse } from '../executorAgent';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -37,29 +37,31 @@ async function executeInDocker(command: string): Promise<string> {
 /**
  * Shell tool implementation
  */
-export const shellTool: Tool = {
-  name: 'SHELL',
-  async execute(task: string, chatId: string, params?: any): Promise<any> {
-    console.log(`Executing shell task: ${task}`);
-    try {
-      // Extract the script from the response
-      const script = params?.script || task;
-      
-      // Execute the script in Docker
-      const output = await executeInDocker(script);
-      
-      return {
-        success: true,
-        message: `Command executed successfully`,
-        output
-      };
-    } catch (error) {
-      console.error('Error executing shell task:', error);
-      return {
-        success: false,
-        message: `Error executing shell task: ${error}`
-      };
-    }
+export
+const shellTool = async (task: string, options: any = {}): Promise<ToolResponse> => {
+  console.log(`Executing shell task: ${task}`);
+  
+  try {
+    // Extract the script from the response
+    const script = options.script || task;
+
+    // Execute the script in Docker
+    const output = await executeInDocker(script);
+  
+    const result = {
+      success: true,
+      message: `Command executed successfully: ${JSON.stringify(output)}`,
+      data: output
+    };
+
+    return result;
+  } catch (error) {
+    console.error('Error executing shell task:', error);
+
+    return {
+      success: false,
+      message: `Error executing shell task: ${error}`
+    };
   }
 };
 

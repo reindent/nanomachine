@@ -37,18 +37,18 @@ export default function DashboardPage() {
     socketService.connect();
     
     // Register event listeners
-    const taskUnsubscribe = socketService.onTaskUpdate((updatedTasks) => {
+    const tasksUpdateUnsubscribe = socketService.onTasksUpdate((updatedTasks) => {
       setTasks(updatedTasks);
       setIsLoading(false);
     });
-    
+
     const statusUnsubscribe = socketService.onStatusUpdate((status) => {
       setSystemStatus(status);
     });
     
     // Cleanup on unmount
     return () => {
-      taskUnsubscribe();
+      tasksUpdateUnsubscribe();
       statusUnsubscribe();
       socketService.disconnect();
     };
