@@ -19,6 +19,9 @@ The server is built with Node.js and Express, using a modular architecture with 
 - **BridgeService**: Manages communication with the bridge component, handling agent events and task operations
 - **NanobrowserService**: Configures the nanobrowser extension with LLM providers and agent models
 - **VNCService**: Provides remote browser viewing and control capabilities
+- **AgentCoordinator**: Coordinates the strategist and executor agents to process user requests
+- **ContextManager**: Maintains context between tasks for coherent execution
+- **TaskService**: Manages task creation, updates, and notifications
 
 ### Models
 
@@ -37,6 +40,39 @@ The server implements a clean MVC pattern with dedicated controllers and routes 
 - **Task Routes**: Handle task creation and monitoring
 - **Status Routes**: Provide system status information
 - **Bridge Routes**: Facilitate communication with the bridge service
+
+### AI Agent System
+
+The server includes a sophisticated AI agent system for processing user requests:
+
+- **Agent Coordinator** (`/services/agents/agentCoordinator.ts`):
+  - Central orchestration component that manages the entire agent workflow
+  - Processes user requests through strategist and executor agents
+  - Maintains context between tasks using the context manager
+  - Extracts meaningful information from task results
+  - Generates final responses to user requests based on all task results
+
+- **Strategist Agent**: Creates multi-step plans for user requests
+  - Analyzes user requests and generates structured task plans
+  - Adapts plan complexity to match task requirements
+  - Ensures tasks flow logically from research to execution to synthesis
+
+- **Executor Agent**: Executes individual tasks using specialized tools
+  - Selects the appropriate tool for each task
+  - Enriches tasks with context from previous tasks
+  - Extracts valuable information from task results
+
+- **Agent Tools** (`/services/agents/tools/`):
+  - **Browser Tool** (`browserTool.ts`): Interfaces with the Nanobrowser extension for web tasks
+    - Handles asynchronous browser operations
+    - Manages event listeners for browser task completion
+    - Processes responses from the bridge service
+  - **Shell Tool** (`shellTool.ts`): Executes shell commands in the Docker container
+    - Safely runs commands in the isolated environment
+    - Handles command output and error processing
+  - **Data Tool** (`dataTool.ts`): Processes and synthesizes data from previous tasks
+    - Cleans, deduplicates, and formats data
+    - Generates structured summaries from collected information
 
 ## API Endpoints
 
@@ -128,6 +164,7 @@ OPENAI_API_KEY=your_openai_api_key
 LLM_MODEL_NAMES=gpt-4.1,gpt-4o,gpt-4o-mini,o3-mini
 
 # Agent Configuration
+# Nanobrowser Agents
 AGENT_PLANNER_MODEL=gpt-4.1
 AGENT_PLANNER_TEMPERATURE=0.7
 AGENT_PLANNER_TOP_P=0.9
@@ -139,6 +176,13 @@ AGENT_NAVIGATOR_TOP_P=0.85
 AGENT_VALIDATOR_MODEL=gpt-4.1
 AGENT_VALIDATOR_TEMPERATURE=0.1
 AGENT_VALIDATOR_TOP_P=0.8
+
+# Nanomachine Agents
+STRATEGIST_MODEL=gpt-4.1
+STRATEGIST_TEMPERATURE=0.7
+
+EXECUTOR_MODEL=gpt-4.1
+EXECUTOR_TEMPERATURE=0.2
 
 # VNC Configuration
 VNC_HOST=localhost

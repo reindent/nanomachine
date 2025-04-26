@@ -6,12 +6,13 @@ Nanomachine is a Virtual Machine (VM) AI agent dashboard that enables intelligen
 
 ## Project Overview
 
-Nanomachine consists of three main components that work together to provide a seamless AI agent experience:
+Nanomachine consists of these main components that work together to provide a seamless AI agent experience:
 
 1. **Client**: React-based web application that serves as the user interface
 2. **Server**: Node.js backend that manages tasks, chats, and system state
 3. **Bridge**: Communication layer between the server and Nanobrowser extension
-4. **Docker Container**: Docker container that provides an isolated environment for running the Nanobrowser extension (contains the browser and VNC server)
+4. **AI Agent System**: Multi-agent system with strategist and executor agents for task planning and execution
+5. **Docker Container**: Docker container that provides an isolated environment for running the Nanobrowser extension (contains the browser and VNC server)
 
 ## Architecture
 
@@ -63,6 +64,10 @@ The server handles the business logic and data persistence:
 - **Database Integration**: MongoDB for data persistence
 - **Bridge Communication**: Integration with the bridge service
 - **VNC Service**: Proxy for remote browser control
+- **AI Agent System**: Multi-agent architecture for task planning and execution
+  - **Strategist Agent**: Creates multi-step plans for user requests
+  - **Executor Agent**: Executes individual tasks using specialized tools
+  - **Context Manager**: Maintains context between tasks for coherent execution
 
 [Learn more about the server component](./server/README.md)
 
@@ -150,9 +155,9 @@ Each component can be configured through environment variables. See the individu
 - [X] VNC client
 - [X] Install scripts
 - [X] Browsing AI agent integration (using Nanobrowser)
+- [X] VM AI agent: operate virtual machines, OS, filesystem, etc. using natural language
 - [ ] Tests: we need to add tests for all components
 - [ ] Multiple browser sessions: ideally each session has its own VM
-- [ ] VM AI agent: operate virtual machines, OS, filesystem, etc. using natural language
 - [ ] Windows support: add scripts for Windows
 - [ ] Electron app: add a desktop application for a more native experience
 - [ ] Mobile app: create a mobile application to monitor and control the AI agents
