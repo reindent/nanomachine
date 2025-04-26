@@ -1,8 +1,28 @@
 /**
  * Shell Tool
  * 
- * A simple tool for executing shell commands in the Docker VM
+ * This tool handles shell operations in the Docker container.
  */
+
+// Tool description for use by other agents
+export const SHELL_TOOL_DESCRIPTION = {
+  name: "Shell Tool",
+  description: "Executes shell commands in the Docker container to perform filesystem operations, process data, and interact with the operating system.",
+  capabilities: [
+    "File creation, reading, and manipulation",
+    "Directory operations and navigation",
+    "Text processing and data extraction",
+    "System information retrieval",
+    "Data analysis using command-line tools"
+  ],
+  bestFor: [
+    "File and directory management tasks",
+    "Processing and analyzing local data",
+    "Simple text manipulation and extraction",
+    "System configuration and information gathering"
+  ]
+};
+
 import { Tool, ToolResponse } from '../executorAgent';
 import { exec } from 'child_process';
 import { promisify } from 'util';

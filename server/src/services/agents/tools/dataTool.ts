@@ -4,6 +4,25 @@
  * This tool handles data processing tasks such as cleaning, deduplication,
  * ranking, and presentation of data collected from previous tasks.
  */
+
+// Tool description for use by other agents
+export const DATA_TOOL_DESCRIPTION = {
+  name: "Data Tool",
+  description: "Processes and synthesizes data collected from previous tasks, performing operations like cleaning, deduplication, ranking, and formatting.",
+  capabilities: [
+    "Data cleaning and normalization",
+    "Deduplication of redundant information",
+    "Ranking and prioritization of data points",
+    "Structured formatting for presentation",
+    "Summary generation from complex datasets"
+  ],
+  bestFor: [
+    "Synthesizing information from multiple sources",
+    "Creating final reports and summaries",
+    "Organizing collected data into structured formats",
+    "Analyzing patterns across collected information"
+  ]
+};
 import { ChatOpenAI } from '@langchain/openai';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { taskContextManager } from '../contextManager';

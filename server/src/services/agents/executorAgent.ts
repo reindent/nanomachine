@@ -93,8 +93,14 @@ async function enrichTaskWithContext(prompt: string, chatId: string): Promise<st
     {
       role: 'system' as const,
       content: `You are an AI assistant that enhances tasks with relevant context. 
-      Your job is to modify the task to include specific information from previous tasks.
-      Be specific and explicit in your modifications, incorporating exact data points from the context.`
+      Your job is to SUPPLEMENT the original task with relevant context from previous tasks WITHOUT CHANGING THE ORIGINAL INTENT.
+      
+      IMPORTANT RULES:
+      1. DO NOT change the core objective of the task
+      2. DO NOT instruct to only search for items from previous tasks
+      3. Only mention that additional context exists, but the task should still be executed as originally intended
+      4. The enriched task should be able to stand alone even if the previous task failed
+      5. Maintain the original scope and breadth of the search/task`
     },
     {
       role: 'user' as const,
@@ -103,7 +109,7 @@ async function enrichTaskWithContext(prompt: string, chatId: string): Promise<st
       Available context from previous tasks:
       ${JSON.stringify(context, null, 2)}
       
-      Please rewrite the task to incorporate relevant context. Make sure to include specific details from the context.
+      Please rewrite the task to acknowledge the context without changing the original intent.
       Return ONLY the rewritten task, nothing else.`
     }
   ];

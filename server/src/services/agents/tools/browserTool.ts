@@ -4,6 +4,25 @@
  * This tool handles browser operations through the bridge service.
  * It properly handles the asynchronous nature of browser tasks and integrates with the event system.
  */
+
+// Tool description for use by other agents
+export const BROWSER_TOOL_DESCRIPTION = {
+  name: "Browser Tool",
+  description: "Interfaces with the Nanobrowser extension to perform web-based tasks such as searching, navigating to websites, extracting information, and interacting with web elements.",
+  capabilities: [
+    "Web search and information retrieval",
+    "Website navigation and content extraction",
+    "Form filling and submission",
+    "Screenshot capture",
+    "Data collection from multiple sources"
+  ],
+  bestFor: [
+    "Research tasks requiring web access",
+    "Finding specific information online",
+    "Comparing data across multiple websites",
+    "Extracting structured data from web pages"
+  ]
+};
 import 'dotenv/config';
 import { Server } from 'socket.io';
 import mongoose from 'mongoose';
