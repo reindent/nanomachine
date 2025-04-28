@@ -13,6 +13,9 @@ interface PlanStep {
   completed: boolean;
 }
 
+// Define available tool types
+const TOOL_TYPES = ['BROWSER', 'SHELL', 'DATA'];
+
 export default function Strategy({ plan, onPlanChange }: StrategyProps) {
   // Parse the plan string into steps
   const parsePlan = (planText: string): PlanStep[] => {
@@ -21,12 +24,10 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
     const lines = planText.split('\n').filter(line => line.trim() !== '');
     
     return lines.map((line, index) => {
-      // Extract the tool from brackets at the beginning of the line
-      const toolMatch = line.match(/^\d+\.\s*\[(BROWSER|SHELL|DATA)\]/i);
-      const tool = toolMatch ? toolMatch[1].toUpperCase() : 'UNKNOWN';
-      
-      // Remove the tool and number prefix to get the description
-      const description = line.replace(/^\d+\.\s*\[(BROWSER|SHELL|DATA)\]\s*/i, '').trim();
+      // Capture any text in brackets as potential tool
+      const match = line.match(/.*?\[(.*?)\]\s*(.*)/i);
+      const tool = match ? match[1].toUpperCase() : 'UNKNOWN';
+      const description = match ? match[2].trim() : line.trim();
       
       return {
         id: index,
@@ -40,6 +41,7 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
   const [steps, setSteps] = useState<PlanStep[]>(parsePlan(plan));
   const [editingStep, setEditingStep] = useState<number | null>(null);
   const [editText, setEditText] = useState<string>('');
+  const [editTool, setEditTool] = useState<string>('BROWSER');
   
   // Update steps when plan changes
   useEffect(() => {
@@ -64,7 +66,8 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
   const startEditing = (id: number) => {
     const step = steps.find(s => s.id === id);
     if (step) {
-      setEditText(`[${step.tool}] ${step.description}`);
+      setEditText(step.description);
+      setEditTool(step.tool);
       setEditingStep(id);
     }
   };
@@ -73,14 +76,15 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
   const saveEdit = () => {
     if (editingStep === null) return;
     
-    // Extract tool and description from edit text
-    const toolMatch = editText.match(/^\[(BROWSER|SHELL|DATA)\]/i);
-    const tool = toolMatch ? toolMatch[1].toUpperCase() : 'UNKNOWN';
-    const description = editText.replace(/^\[(BROWSER|SHELL|DATA)\]\s*/i, '').trim();
+    // Prevent empty descriptions
+    if (!editText.trim()) {
+      alert('Step description cannot be empty');
+      return; // Don't save if description is empty
+    }
     
     const newSteps = steps.map(step => 
       step.id === editingStep 
-        ? { ...step, tool, description } 
+        ? { ...step, tool: editTool, description: editText.trim() } 
         : step
     );
     
@@ -110,6 +114,11 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
   
   // Cancel editing
   const cancelEdit = () => {
+    if (!editText.trim()) {
+      // If the description is empty, remove the step
+      deleteStep(editingStep!);
+    }
+
     setEditingStep(null);
   };
 
@@ -126,24 +135,44 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
     }
   };
 
+  // Add a new step
+  const addNewStep = () => {
+    // Cannot add new step if one is already being edited
+    if (editingStep !== null) return; 
+
+    // Create a new step
+    const newStep: PlanStep = {
+      id: steps.length > 0 ? Math.max(...steps.map(s => s.id)) + 1 : 0,
+      tool: 'BROWSER',
+      description: '',
+      completed: false
+    };
+    
+    // Add to steps
+    const newSteps = [...steps, newStep];
+    setSteps(newSteps);
+    
+    // Start editing the new step
+    setEditTool(newStep.tool);
+    setEditText('');
+    setEditingStep(newStep.id);
+    
+    // If onPlanChange is provided, update the plan
+    if (onPlanChange) {
+      const newPlan = newSteps.map((step, index) => 
+        `${index + 1}. [${step.tool}] ${step.description}`
+      ).join('\n');
+      onPlanChange(newPlan);
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow border-gray-200 border p-4 mb-4">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-sm font-semibold">Strategy Plan</h2>
         <button 
           className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer"
-          onClick={() => {
-            // Add a new step at the end
-            const newStep: PlanStep = {
-              id: steps.length,
-              tool: 'BROWSER',
-              description: 'New step',
-              completed: false
-            };
-            const newSteps = [...steps, newStep];
-            setSteps(newSteps);
-            startEditing(newStep.id);
-          }}
+          onClick={addNewStep}
         >
           + Add Step
         </button>
@@ -163,23 +192,35 @@ export default function Strategy({ plan, onPlanChange }: StrategyProps) {
             <li key={step.id} className={`border rounded p-2 ${step.completed ? 'bg-gray-50' : 'bg-white'}`}>
               {editingStep === step.id ? (
                 <div className="flex flex-col space-y-2">
-                  <input
-                    type="text"
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    className="border rounded px-2 py-1 w-full"
-                    autoFocus
-                  />
+                  <div className="flex space-x-2">
+                    <select
+                      value={editTool}
+                      onChange={(e) => setEditTool(e.target.value)}
+                      className="border rounded px-2 py-1 text-xs"
+                    >
+                      {TOOL_TYPES.map(tool => (
+                        <option key={tool} value={tool}>{tool}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      className="border rounded px-2 py-1 w-full"
+                      autoFocus
+                      placeholder="Step description"
+                    />
+                  </div>
                   <div className="flex justify-end space-x-2">
                     <button 
                       onClick={cancelEdit}
-                      className="text-xs text-gray-600 hover:text-gray-800"
+                      className="text-xs text-gray-600 hover:text-gray-800 cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button 
                       onClick={saveEdit}
-                      className="text-xs text-blue-600 hover:text-blue-800"
+                      className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer"
                     >
                       Save
                     </button>

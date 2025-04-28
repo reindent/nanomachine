@@ -48,21 +48,27 @@ export interface SystemStatus {
   activeSessions: number;
 }
 
+export interface StrategyCreated {
+  chatId: string;
+  plan: string;
+}
+
 // Socket service class
 class SocketService {
   private socket: Socket | null = null;
   private serverUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3100';
   
   // Event callbacks
+  private connectionStatusCallbacks: ((connected: boolean) => void)[] = [];
   private statusUpdateCallbacks: ((status: SystemStatus) => void)[] = [];
   private chatMessageCallbacks: ((message: ChatMessage) => void)[] = [];
-  private connectionStatusCallbacks: ((connected: boolean) => void)[] = [];
   private agentEventCallbacks: ((event: AgentEvent) => void)[] = [];
   private chatCreatedCallbacks: ((chat: Chat) => void)[] = [];
   private chatSelectedCallbacks: ((chatId: string) => void)[] = [];
   private taskCreatedCallbacks: ((task: Task) => void)[] = [];
   private taskUpdateCallbacks: ((task: Task) => void)[] = [];
   private tasksUpdateCallbacks: ((tasks: Task[]) => void)[] = [];
+  private strategyCreatedCallbacks: ((data: StrategyCreated) => void)[] = [];
 
   // Initialize socket connection
   connect(): void {
@@ -117,6 +123,11 @@ class SocketService {
     // Update all tasks
     this.socket.on('tasks:update', (tasks: Task[]) => {
       this.notifyTasksUpdate(tasks);
+    });
+
+    // New strategy plan
+    this.socket.on('strategy:created', (data: { chatId: string; plan: string }) => {
+      this.notifyStrategyCreated(data);
     });
   }
   
@@ -228,6 +239,14 @@ class SocketService {
     };
   }
 
+  // Subscribe to strategy created events
+  onStrategyCreated(callback: (data: { chatId: string; plan: string }) => void): () => void {
+    this.strategyCreatedCallbacks.push(callback);
+    return () => {
+      this.strategyCreatedCallbacks = this.strategyCreatedCallbacks.filter(cb => cb !== callback);
+    };
+  }
+
   // Notification methods  
   private notifyStatusUpdate(status: SystemStatus): void {
     this.statusUpdateCallbacks.forEach(callback => callback(status));
@@ -272,6 +291,11 @@ class SocketService {
   // Notify tasks update callbacks
   private notifyTasksUpdate(tasks: Task[]): void {
     this.tasksUpdateCallbacks.forEach(callback => callback(tasks));
+  }
+
+  // Notify strategy created callbacks
+  private notifyStrategyCreated(data: StrategyCreated): void {
+    this.strategyCreatedCallbacks.forEach(callback => callback(data));
   }
 }
 

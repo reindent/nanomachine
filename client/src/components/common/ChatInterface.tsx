@@ -91,6 +91,13 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
         console.log('Added message to UI');
       }
     });
+
+    // Listen for strategy created events
+    const strategyUnsubscribe = socketService.onStrategyCreated((data) => {
+      console.log('Received strategy plan:', data);
+      setStrategyPlan(data.plan);
+      setShowStrategy(true);
+    });
     
     // Listen for agent events
     const agentEventUnsubscribe = socketService.onAgentEvent((event: AgentEvent) => {
@@ -131,6 +138,7 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
     return () => {
       connectionUnsubscribe();
       chatUnsubscribe();
+      strategyUnsubscribe();
       agentEventUnsubscribe();
     };
   }, [chatId]);
