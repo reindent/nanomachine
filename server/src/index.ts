@@ -15,16 +15,14 @@ import { Message } from './models';
 import { configureTaskService } from './services/taskService';
 import { router as statusRoutes } from './routes/status';
 import { router as bridgeRoutes } from './routes/bridge';
-import { AgentEventMessage } from './types/bridge';
-import { configureAgentCoordinator, processUserRequest } from './services/agents/agentCoordinator';
+import { configureAgentCoordinator, planUserRequest } from './services/agents/agentCoordinator';
 import { configureExecutorAgent } from './services/agents/executorAgent';
 import createVNCService from './vnc/vncService';
-import { configureNanobrowser } from './services/nanobrowserService';
 import bridgeService from './services/bridgeService';
 import { connectToDatabase } from './utils/database';
 import chatRoutes from './routes/chatRoutes';
 import taskRoutes from './routes/taskRoutes';
-import { Chat, Task, TaskEvent } from './models';
+import { Chat, Task } from './models';
 import { addMessageToChat, configureChatService, createChat } from './services/chatService';
 
 const app = express();
@@ -144,7 +142,7 @@ io.on('connection', async (socket) => {
     console.error('Error fetching initial data:', error);
   }
   
-  // Handle chat messages
+  // Handle chat messages (user chat messages by default are handled in planning mode)
   socket.on('chat:message', async (message) => {
     console.log(`Received message: ${JSON.stringify(message)}`);
     
@@ -163,12 +161,11 @@ io.on('connection', async (socket) => {
       if (message.sender === 'user') {
         try {
           // Process the user request through the agent coordinator
-          const { finalResponse } = await processUserRequest(message.text, chatId);
-          
-          // After all tasks are completed, send the final response to the user
-          await addMessageToChat(chatId, finalResponse, 'agent', false);
+          const plan = await planUserRequest(message.text, chatId);
+
+          io.emit('strategy:created', { chatId, plan });
         } catch (error) {
-          console.error('Error forwarding message to bridge:', error);
+          console.error(`Error generating a plan for user request: ${message.text}`, error);
           
           // Notify user of error
           await addMessageToChat(chatId, 'Sorry, I encountered an error processing your request.', 'system', false);

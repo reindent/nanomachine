@@ -12,6 +12,7 @@ import { taskContextManager } from './contextManager';
 import { ChatOpenAI } from '@langchain/openai';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { addMessageToChat } from '../chatService';
+import { saveStrategyPlan } from '../strategyPlanService';
 
 // Socket.io instance reference
 let io: Server;
@@ -194,29 +195,57 @@ async function generateFinalResponse(userRequest: string, executionResults: Task
 }
 
 /**
- * Process a user request through the strategist and executor agents
+ * Plan a user request using the strategist agent without executing it
  * 
  * @param userRequest The user's request message
  * @param chatId The chat ID associated with the request
- * @returns An object with the strategy plan, execution results, and final response
+ * @returns The strategy plan generated for the request
  */
-export async function processUserRequest(userRequest: string, chatId: string): Promise<{
-  strategyPlan: string;
-  executionResults: TaskExecutionResult[];
-  finalResponse: string;
-}> {
+export async function planUserRequest(userRequest: string, chatId: string): Promise<string> {
   try {
-    console.log(`Processing user request: ${userRequest}`);
+    console.log(`Planning user request: ${userRequest}`);
     
     // Clear any existing context for this chat session
     taskContextManager.clearContext(chatId);
     
     // Generate a strategy plan using the strategist agent
     const strategyPlan = await generateStrategyPlan(userRequest);
-    console.log(`Generated strategy plan: ${strategyPlan}`);
     
-    // Send the strategy plan as a message to the client
-    await addMessageToChat(chatId, strategyPlan, 'agent', true);
+    // Save the strategy plan to the database
+    await saveStrategyPlan(chatId, strategyPlan);
+    
+    // Emit the plan:created event to the client
+    if (io) {
+      io.emit('plan:created', {
+        chatId,
+        plan: strategyPlan,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.error('Cannot emit plan:created event: Socket.IO instance not configured');
+    }
+    
+    return strategyPlan;
+  } catch (error) {
+    console.error('Error planning user request:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute a previously generated user plan
+ * 
+ * @param userRequest The original user's request message
+ * @param strategyPlan The strategy plan to execute
+ * @param chatId The chat ID associated with the request
+ * @returns An object with the execution results and final response
+ */
+export async function executeUserPlan(userRequest: string, strategyPlan: string, chatId: string): Promise<{
+  executionResults: TaskExecutionResult[];
+  finalResponse: string;
+}> {
+  try {
+    console.log(`Executing plan for user request: ${userRequest}`);
     
     // Parse tasks from the strategy plan
     const tasks = parseTasks(strategyPlan);
@@ -263,7 +292,6 @@ export async function processUserRequest(userRequest: string, chatId: string): P
     const finalResponse = await generateFinalResponse(userRequest, executionResults, chatId);
     
     return {
-      strategyPlan,
       executionResults,
       finalResponse
     };
