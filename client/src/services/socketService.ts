@@ -48,9 +48,20 @@ export interface SystemStatus {
   activeSessions: number;
 }
 
-export interface StrategyCreated {
+// Interface for the plan data received from the server
+interface PlanStep {
+  tool: string;
+  task: string;
+}
+
+interface PlanData {
+  description: string;
+  plan: PlanStep[];
+}
+
+export interface StrategyUpdate {
   chatId: string;
-  plan: string;
+  plan: PlanData;
 }
 
 // Socket service class
@@ -68,7 +79,17 @@ class SocketService {
   private taskCreatedCallbacks: ((task: Task) => void)[] = [];
   private taskUpdateCallbacks: ((task: Task) => void)[] = [];
   private tasksUpdateCallbacks: ((tasks: Task[]) => void)[] = [];
-  private strategyCreatedCallbacks: ((data: StrategyCreated) => void)[] = [];
+  private strategyUpdateCallbacks: ((data: StrategyUpdate) => void)[] = [];
+
+  // Emit socket messages
+  emit(message: string, data?: any): void {
+    if (!this.socket) {
+      console.error('Socket not connected');
+      return;
+    }
+    
+    this.socket.emit(message, data);
+  }
 
   // Initialize socket connection
   connect(): void {
@@ -126,8 +147,8 @@ class SocketService {
     });
 
     // New strategy plan
-    this.socket.on('strategy:created', (data: { chatId: string; plan: string }) => {
-      this.notifyStrategyCreated(data);
+    this.socket.on('strategy:update', (data: StrategyUpdate) => {
+      this.notifyStrategyUpdate(data);
     });
   }
   
@@ -170,6 +191,17 @@ class SocketService {
     console.log(`Sent archive request for task ${taskId}`);
   }
   
+  // Select a chat
+  selectChat(chatId: string): void {
+    if (!this.socket) {
+      console.error('Cannot select chat: Socket not connected');
+      return;
+    }
+    
+    console.log(`Selecting chat: ${chatId}`);
+    this.socket.emit('chat:select', chatId);
+  }
+
   // Event registration methods
   onStatusUpdate(callback: (status: SystemStatus) => void): () => void {
     this.statusUpdateCallbacks.push(callback);
@@ -240,10 +272,10 @@ class SocketService {
   }
 
   // Subscribe to strategy created events
-  onStrategyCreated(callback: (data: { chatId: string; plan: string }) => void): () => void {
-    this.strategyCreatedCallbacks.push(callback);
+  onStrategyUpdate(callback: (data: StrategyUpdate) => void): () => void {
+    this.strategyUpdateCallbacks.push(callback);
     return () => {
-      this.strategyCreatedCallbacks = this.strategyCreatedCallbacks.filter(cb => cb !== callback);
+      this.strategyUpdateCallbacks = this.strategyUpdateCallbacks.filter(cb => cb !== callback);
     };
   }
 
@@ -293,9 +325,9 @@ class SocketService {
     this.tasksUpdateCallbacks.forEach(callback => callback(tasks));
   }
 
-  // Notify strategy created callbacks
-  private notifyStrategyCreated(data: StrategyCreated): void {
-    this.strategyCreatedCallbacks.forEach(callback => callback(data));
+  // Notify strategy update callbacks
+  private notifyStrategyUpdate(data: StrategyUpdate): void {
+    this.strategyUpdateCallbacks.forEach(callback => callback(data));
   }
 }
 

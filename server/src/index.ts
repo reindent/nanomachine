@@ -7,15 +7,17 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+const NANOMACHINE_VERSION = '0.2.0';
+
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
-import { Message } from './models';
+import { Message, StrategyPlan } from './models';
 import { configureTaskService } from './services/taskService';
 import { router as statusRoutes } from './routes/status';
 import { router as bridgeRoutes } from './routes/bridge';
-import { configureAgentCoordinator, planUserRequest } from './services/agents/agentCoordinator';
+import { configureAgentCoordinator, planUserRequest, updateChatContext } from './services/agents/agentCoordinator';
 import { configureExecutorAgent } from './services/agents/executorAgent';
 import createVNCService from './vnc/vncService';
 import bridgeService from './services/bridgeService';
@@ -24,6 +26,7 @@ import chatRoutes from './routes/chatRoutes';
 import taskRoutes from './routes/taskRoutes';
 import { Chat, Task } from './models';
 import { addMessageToChat, configureChatService, createChat } from './services/chatService';
+import { configureStrategyPlanService, saveStrategyPlan, strategyPlanToString, getLatestStrategyPlan } from './services/strategyPlanService';
 
 const app = express();
 const server = http.createServer(app);
@@ -44,6 +47,7 @@ createVNCService(io);
 configureAgentCoordinator(io);
 configureTaskService(io);
 configureChatService(io);
+configureStrategyPlanService(io);
 
 // Configure executor agent with the socket.io instance
 configureExecutorAgent(io);
@@ -54,7 +58,7 @@ const PORT = process.env.SERVER_PORT || 3100;
 const broadcastSystemStatus = () => {
   const systemStatus = {
     websocketStatus: 'connected',
-    nanomachineClientVersion: process.env.CLIENT_VERSION || '1.0.0',
+    nanomachineClientVersion: NANOMACHINE_VERSION,
     nanobrowserVersion: bridgeService.getNanobrowserVersion(),
     serverStatus: bridgeService.isBridgeConnected() ? 'online' : 'offline',
     activeSessions: activeSessionCount
@@ -124,46 +128,39 @@ io.on('connection', async (socket) => {
   activeSessionCount++;
   broadcastSystemStatus();
   
-  try {
-    // Send initial data on connection
-    const tasks = await Task.find({ archived: false }).sort({ startTime: -1 }).limit(10);
-    socket.emit('tasks:update', tasks);
-    
-    // Get system status for this client
-    const systemStatus = {
-      websocketStatus: 'connected',
-      nanomachineClientVersion: process.env.CLIENT_VERSION || '1.0.0',
-      nanobrowserVersion: bridgeService.getNanobrowserVersion(),
-      serverStatus: bridgeService.isBridgeConnected() ? 'online' : 'offline',
-      activeSessions: activeSessionCount
-    };
-    socket.emit('status:update', systemStatus);
-  } catch (error) {
-    console.error('Error fetching initial data:', error);
-  }
-  
   // Handle chat messages (user chat messages by default are handled in planning mode)
   socket.on('chat:message', async (message) => {
     console.log(`Received message: ${JSON.stringify(message)}`);
     
     let chatId = message.chatId;
+    let chat;
     try {
       // Create a new chat if no chatId is provided (first message)
       // Check for undefined, null, empty string, or invalid ObjectId format
-      if (!chatId || chatId === '' || !(await Chat.findById(chatId))) {
-        chatId = await createChat();
+      chat = await Chat.findById(chatId);
+      if (!chat) {
+        chat = await createChat();
+        chatId = chat.id;
       }
 
-      // TODO: check edge cases where we don't want the client to keep typing
+      // TODO: check edge cases where we don't want the react app to keep typing
       await addMessageToChat(chatId, message.text, message.sender, true);
 
       // If it's a user message, process it through our agent system
       if (message.sender === 'user') {
         try {
           // Process the user request through the agent coordinator
-          const plan = await planUserRequest(message.text, chatId);
+          const previousStrategyPlan = await StrategyPlan.findOne({ chatId });
+          const previousStrategyPlanString = previousStrategyPlan ? strategyPlanToString(previousStrategyPlan) : '';
+          const plan = await planUserRequest(message.text, chat, previousStrategyPlanString);
+          if (!plan) {
+            await addMessageToChat(chatId, 'Sorry, I encountered an error processing your request.', 'system', false);
+            return;
+          }
 
-          io.emit('strategy:created', { chatId, plan });
+          await saveStrategyPlan(chatId, plan);
+          await addMessageToChat(chatId, plan.description, 'agent', false);
+          await updateChatContext(chatId);
         } catch (error) {
           console.error(`Error generating a plan for user request: ${message.text}`, error);
           
@@ -173,6 +170,18 @@ io.on('connection', async (socket) => {
       }
     } catch (dbError) {
       console.error('Database error handling message:', dbError);
+    }
+  });
+  
+  // Handle chat selection
+  socket.on('chat:select', async (chatId) => {
+    console.log(`Client selected chat: ${chatId}`);
+    
+    try {
+      // Send the latest strategy plan for this chat
+      await getLatestStrategyPlan(chatId);
+    } catch (error) {
+      console.error('Error sending strategy plan for selected chat:', error);
     }
   });
   

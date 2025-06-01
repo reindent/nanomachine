@@ -174,6 +174,20 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
     setEditingChatTitle('');
   };
 
+  // Function to handle chat selection
+  const handleChatSelect = (chatId: string) => {
+    // Emit the chat:select event to the server
+    socketService.emit('chat:select', chatId);
+    
+    // Call the onChatSelect callback if provided
+    if (onChatSelect) {
+      onChatSelect(chatId);
+    } else {
+      // Navigate to the chat
+      navigate(`/session/${chatId}`);
+    }
+  };
+
   // Format date for display
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -352,7 +366,7 @@ export default function ChatList({ onChatSelect, selectedChatId, onNewChat }: Ch
                 // Normal display mode
                 <div
                   key={chat._id}
-                  onClick={() => onChatSelect ? onChatSelect(chat._id) : navigate(`/session/${chat._id}`)}
+                  onClick={() => handleChatSelect(chat._id)}
                   className={`rounded-lg p-3 cursor-pointer flex justify-between items-center transition-all hover:shadow-sm ${currentChatId === chat._id ? 'bg-blue-50 border border-blue-200 shadow-sm' : 'border border-gray-200 hover:bg-gray-50'}`}
                 >
                   <div className="flex-1 min-w-0">

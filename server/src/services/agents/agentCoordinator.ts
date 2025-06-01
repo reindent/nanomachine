@@ -5,14 +5,18 @@
  */
 import { generateStrategyPlan } from './strategistAgent';
 import { executeTask } from './executorAgent';
-import { parseTasks } from './taskParser';
 import bridgeService from '../bridgeService';
 import { Server } from 'socket.io';
 import { taskContextManager } from './contextManager';
 import { ChatOpenAI } from '@langchain/openai';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { addMessageToChat } from '../chatService';
-import { saveStrategyPlan } from '../strategyPlanService';
+import { saveStrategyPlan, StrategyPlanSchema } from '../strategyPlanService';
+import { IStrategyPlan } from '../../models/StrategyPlan';
+import Message, { IMessage } from '../../models/Message';
+import { PromptTemplate } from '@langchain/core/prompts';
+import { Chat } from '../../models';
+import { IChat } from '../../models/Chat';
 
 // Socket.io instance reference
 let io: Server;
@@ -143,6 +147,52 @@ async function extractContextFromResult(task: string, result: any): Promise<Reco
 }
 
 /**
+ * Update the chat context using LLM, so that it can be used for planning and other agents.
+ *
+ * @param previousContext Previous chat context
+ * @param messages Array of chat the last messages
+ * @returns Updated chat context
+ */
+export async function updateChatContext(chatId: string): Promise<string> {
+  const chat = await Chat.findById(chatId);
+  if(!chat) throw new Error('Chat not found');
+
+  const lastMessages = await Message.find({ chatId }).sort({ timestamp: 1 }).limit(10);
+  const formattedMessages = lastMessages.map(message => `[${message.role}]: ${message.content}`).join('\n');
+  
+  const prompt = PromptTemplate.fromTemplate(`
+  You are an AI assistant that updates the chat context by summarizing a conversation between the user and other AI agents.
+  
+  Previous context: {previousContext}
+
+  Recent messages (up to 10):
+  {recentMessages}
+
+  Update the context based on the messages provided and return the updated context.
+
+  Example:
+  [user]: Find the latest news about AI agents on Product Hunt.
+  [assistant]: I have created a plan to find the latest news about AI agents on Product Hunt using the browser.
+
+  (For this example the result should be a summary like "The user requested to find the latest news about AI agents on Product Hunt, the assistant has created a plan using the browser.")
+
+  ONLY RETURN THE UPDATED CONTEXT WITHOUT ANY ADDITIONAL TEXT, NO HEADERS, NO MARKDOWN, NO FORMATTING, ONLY PLAIN TEXT.
+  `);
+
+  const updatedContext = await prompt.pipe(contextProcessor).pipe(new StringOutputParser()).invoke({
+    previousContext: chat.context || '',
+    recentMessages: formattedMessages
+  });
+
+  chat.context = updatedContext;
+  await chat.save();
+
+  console.log(`Updated context for chat ${chatId}: ${updatedContext}`);
+  
+  return updatedContext;
+}
+
+/**
  * Generate a final response to the user based on task execution results
  * 
  * @param userRequest The original user request
@@ -198,105 +248,93 @@ async function generateFinalResponse(userRequest: string, executionResults: Task
  * Plan a user request using the strategist agent without executing it
  * 
  * @param userRequest The user's request message
- * @param chatId The chat ID associated with the request
+ * @param chat The chat associated with the request
+ * @param previousStrategyPlan The previous strategy plan generated for the request
  * @returns The strategy plan generated for the request
  */
-export async function planUserRequest(userRequest: string, chatId: string): Promise<string> {
+export async function planUserRequest(userRequest: string, chat: IChat, previousStrategyPlan: string): Promise<Zod.infer<typeof StrategyPlanSchema> | null> {
   try {
     console.log(`Planning user request: ${userRequest}`);
     
     // Clear any existing context for this chat session
-    taskContextManager.clearContext(chatId);
+    taskContextManager.clearContext(chat.id);
     
     // Generate a strategy plan using the strategist agent
-    const strategyPlan = await generateStrategyPlan(userRequest);
+    const generatedStrategyPlan = await generateStrategyPlan(chat.context, previousStrategyPlan, userRequest);
+    if (!generatedStrategyPlan) return null;
     
-    // Save the strategy plan to the database
-    await saveStrategyPlan(chatId, strategyPlan);
-    
-    // Emit the plan:created event to the client
-    if (io) {
-      io.emit('plan:created', {
-        chatId,
-        plan: strategyPlan,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      console.error('Cannot emit plan:created event: Socket.IO instance not configured');
-    }
-    
-    return strategyPlan;
+    return generatedStrategyPlan;
   } catch (error) {
     console.error('Error planning user request:', error);
     throw error;
   }
 }
 
-/**
- * Execute a previously generated user plan
- * 
- * @param userRequest The original user's request message
- * @param strategyPlan The strategy plan to execute
- * @param chatId The chat ID associated with the request
- * @returns An object with the execution results and final response
- */
-export async function executeUserPlan(userRequest: string, strategyPlan: string, chatId: string): Promise<{
-  executionResults: TaskExecutionResult[];
-  finalResponse: string;
-}> {
-  try {
-    console.log(`Executing plan for user request: ${userRequest}`);
+// /**
+//  * Execute a previously generated user plan
+//  * 
+//  * @param userRequest The original user's request message
+//  * @param strategyPlan The strategy plan to execute
+//  * @param chatId The chat ID associated with the request
+//  * @returns An object with the execution results and final response
+//  */
+// export async function executeUserPlan(userRequest: string, strategyPlan: string, chatId: string): Promise<{
+//   executionResults: TaskExecutionResult[];
+//   finalResponse: string;
+// }> {
+//   try {
+//     console.log(`Executing plan for user request: ${userRequest}`);
     
-    // Parse tasks from the strategy plan
-    const tasks = parseTasks(strategyPlan);
-    console.log(`Parsed ${tasks.length} tasks from strategy plan`);
+//     // Parse tasks from the strategy plan
+//     const tasks = parseTasks(strategyPlan);
+//     console.log(`Parsed ${tasks.length} tasks from strategy plan`);
     
-    // Execute each task sequentially
-    const executionResults: TaskExecutionResult[] = [];
+//     // Execute each task sequentially
+//     const executionResults: TaskExecutionResult[] = [];
     
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i];
-      console.log(`Executing task ${i+1}/${tasks.length}: ${task}`);
+//     for (let i = 0; i < tasks.length; i++) {
+//       const task = tasks[i];
+//       console.log(`Executing task ${i+1}/${tasks.length}: ${task}`);
       
-      // Execute the task with the current context
-      const result = await executeTask(task, chatId);
+//       // Execute the task with the current context
+//       const result = await executeTask(task, chatId);
       
-      // If this is a browser task with a taskId, the browser tool will handle waiting internally
-      // For other tools that might return a taskId, we need to wait for completion
-      if (result.taskId && !result.success) {
-        console.log(`Task ${result.taskId} started, waiting for completion event...`);
-        await createTaskCompletionPromise(result.taskId);
-        console.log(`Task ${result.taskId} completed, continuing execution`);
-      }
+//       // If this is a browser task with a taskId, the browser tool will handle waiting internally
+//       // For other tools that might return a taskId, we need to wait for completion
+//       if (result.taskId && !result.success) {
+//         console.log(`Task ${result.taskId} started, waiting for completion event...`);
+//         await createTaskCompletionPromise(result.taskId);
+//         console.log(`Task ${result.taskId} completed, continuing execution`);
+//       }
       
-      // Extract and store context from the result
-      const extractedContext = await extractContextFromResult(task, result);
-      if (Object.keys(extractedContext).length > 0) {
-        taskContextManager.storeMultipleContext(chatId, extractedContext);
-      }
+//       // Extract and store context from the result
+//       const extractedContext = await extractContextFromResult(task, result);
+//       if (Object.keys(extractedContext).length > 0) {
+//         taskContextManager.storeMultipleContext(chatId, extractedContext);
+//       }
       
-      // Store this task's result directly in context
-      taskContextManager.storeContext(chatId, `taskResult_${i}`, result);
+//       // Store this task's result directly in context
+//       taskContextManager.storeContext(chatId, `taskResult_${i}`, result);
       
-      executionResults.push({
-        task,
-        result
-      });
-    }
+//       executionResults.push({
+//         task,
+//         result
+//       });
+//     }
     
-    // After all tasks are completed, store the original user request in context
-    // This is only done at the end to avoid influencing task execution
-    taskContextManager.storeContext(chatId, 'userRequest', userRequest);
+//     // After all tasks are completed, store the original user request in context
+//     // This is only done at the end to avoid influencing task execution
+//     taskContextManager.storeContext(chatId, 'userRequest', userRequest);
     
-    // Generate the final response based on task results and context
-    const finalResponse = await generateFinalResponse(userRequest, executionResults, chatId);
+//     // Generate the final response based on task results and context
+//     const finalResponse = await generateFinalResponse(userRequest, executionResults, chatId);
     
-    return {
-      executionResults,
-      finalResponse
-    };
-  } catch (error) {
-    console.error('Error processing user request:', error);
-    throw error;
-  }
-}
+//     return {
+//       executionResults,
+//       finalResponse
+//     };
+//   } catch (error) {
+//     console.error('Error processing user request:', error);
+//     throw error;
+//   }
+// }

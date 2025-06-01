@@ -1,4 +1,4 @@
-import Chat from '../models/Chat';
+import Chat, { IChat } from '../models/Chat';
 import Message from '../models/Message';
 import { Server } from 'socket.io';
 
@@ -65,12 +65,7 @@ export async function addMessageToChat(chatId: string, content: string, sender: 
  * 
  * @returns The ID of the new chat
  */
-export async function createChat() {
-  if (!io) {
-    console.error('Cannot create chat: Socket.IO instance not configured');
-    return '';
-  }
-
+export async function createChat(): Promise<IChat> {
   console.log('No valid chatId provided, creating new chat');
   const newChat = await Chat.create({
     title: `New Session ${new Date().toLocaleString()}`,
@@ -79,16 +74,17 @@ export async function createChat() {
   console.log(`Created new chat with ID: ${newChat.id}`);
   
   // Notify all clients that a new chat was created
-  io.emit('chat:created', {
-    chatId: newChat.id,
-    title: newChat.title,
-    lastMessageAt: newChat.lastMessageAt,
-    isActive: true,
-    createdAt: newChat.createdAt,
-    updatedAt: newChat.updatedAt
-  });
-  io.emit('chat:select', newChat.id);
+  if(io) {
+    io.emit('chat:created', {
+      chatId: newChat.id,
+      title: newChat.title,
+      lastMessageAt: newChat.lastMessageAt,
+      isActive: true,
+      createdAt: newChat.createdAt,
+      updatedAt: newChat.updatedAt
+    });
+    io.emit('chat:select', newChat.id);
+  }
 
   return newChat;
 }
- 

@@ -13,22 +13,22 @@ export interface IStrategyStep {
   tool: 'BROWSER' | 'SHELL' | 'DATA';
   description: string;
   taskIds: string[]; // IDs of tasks created when this step was executed
-  isCompleted: boolean;
   lastModified: Date;
 }
 
 // Interface for a version of the strategy plan
 export interface IStrategyVersion {
   versionNumber: number;
+  description: string;
   steps: IStrategyStep[];
   createdAt: Date;
   createdBy: 'user' | 'agent'; // Track if this version was created by the user or the AI
-  isActive: boolean; // Only one version can be active at a time
 }
 
 // Main StrategyPlan interface
 export interface IStrategyPlan extends Document {
   chatId: string;
+  description: string;
   versions: IStrategyVersion[];
   currentVersion: number;
   lastExecutedAt?: Date;
@@ -42,22 +42,22 @@ const StrategyStepSchema = new Schema({
   tool: { type: String, enum: ['BROWSER', 'SHELL', 'DATA'], required: true },
   description: { type: String, required: true },
   taskIds: [{ type: String }],
-  isCompleted: { type: Boolean, default: false },
   lastModified: { type: Date, default: Date.now }
 });
 
 // Schema for a version
 const StrategyVersionSchema = new Schema({
   versionNumber: { type: Number, required: true },
+  description: { type: String, required: true },
   steps: [StrategyStepSchema],
   createdAt: { type: Date, default: Date.now },
-  createdBy: { type: String, enum: ['user', 'agent'], default: 'agent' },
-  isActive: { type: Boolean, default: true }
+  createdBy: { type: String, enum: ['user', 'agent'], default: 'agent' }
 });
 
 // Main schema
 const StrategyPlanSchema = new Schema({
   chatId: { type: String, required: true, unique: true },
+  description: { type: String, required: true },
   versions: [StrategyVersionSchema],
   currentVersion: { type: Number, default: 1 },
   lastExecutedAt: { type: Date },

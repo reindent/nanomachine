@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IChat extends Document {
   title: string;           // Chat title
+  context: string;         // Chat context
   userId?: string;         // Optional user identifier (for future auth)
   isActive: boolean;       // Whether this chat is active
   lastMessageAt: Date;     // Timestamp of the last message
@@ -15,6 +16,10 @@ const ChatSchema: Schema = new Schema(
       type: String, 
       required: true,
       default: 'New Chat'
+    },
+    context: { 
+      type: String,
+      default: ''
     },
     userId: { 
       type: String

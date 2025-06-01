@@ -2,7 +2,7 @@ import { API_URL } from '../../config';
 import { useState, useRef, useEffect } from 'react';
 import { formatTime, formatEventTime, formatChatMessage } from '../../utils/formatters';
 import socketService, { ChatMessage as SocketChatMessage, AgentEvent } from '../../services/socketService';
-import Strategy from './Strategy';
+import Strategy, { IStrategyPlan } from './Strategy';
 
 // Define types for agent event display
 interface AgentEventDisplay {
@@ -61,7 +61,7 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [showEvents, setShowEvents] = useState(true);
   const [showStrategy, setShowStrategy] = useState(false);
-  const [strategyPlan, setStrategyPlan] = useState('');
+  const [strategyPlan, setStrategyPlan] = useState<IStrategyPlan | null>(null);
   const [mode, setMode] = useState('plan');
   const [model, setModel] = useState('o4-mini');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -92,11 +92,38 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
       }
     });
 
-    // Listen for strategy created events
-    const strategyUnsubscribe = socketService.onStrategyCreated((data) => {
+    // Listen for strategy update events
+    const strategyUnsubscribe = socketService.onStrategyUpdate((data) => {
       console.log('Received strategy plan:', data);
-      setStrategyPlan(data.plan);
-      setShowStrategy(true);
+      
+      if (data && data.plan) {
+        // Convert the received plan data to IStrategyPlan format
+        const plan: IStrategyPlan = {
+          chatId: data.chatId,
+          description: data.plan.description || '',
+          versions: [
+            {
+              versionNumber: 1,
+              description: data.plan.description || '',
+              steps: (data.plan.plan || []).map((step: { tool: string; task: string }, index: number) => ({
+                id: `step-${index}`,
+                stepNumber: index + 1,
+                tool: step.tool as 'BROWSER' | 'SHELL' | 'DATA',
+                description: step.task || '',
+                taskIds: [],
+                lastModified: new Date()
+              })),
+              createdAt: new Date(),
+              createdBy: 'agent' as 'user' | 'agent',
+            }
+          ],
+          currentVersion: 1,
+          executionCount: 0
+        };
+        
+        setStrategyPlan(plan);
+        setShowStrategy(true);
+      }
     });
     
     // Listen for agent events
@@ -299,9 +326,11 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
       </div>
 
       {/* Strategy component */}
-      <div className="px-2 pt-2">
-        <Strategy plan={strategyPlan} />
-      </div>
+      {strategyPlan && (
+        <div className="px-2 pt-2">
+          <Strategy plan={strategyPlan} />
+        </div>
+      )}
 
       {/* Input container - Fixed at bottom */}
       <div className="flex justify-between items-center border-t border-gray-200 p-1 bg-white">
@@ -368,14 +397,13 @@ export default function ChatInterface({ chatId }: ChatInterfaceProps) {
                   Plan
                 </button>
                 <button
-                  className={`cursor-pointer flex items-center px-3 py-1 rounded-full transition-colors ${mode === 'execute' ? 'bg-orange-100 shadow' : 'text-gray-600 hover:text-gray-800'}`}
-                  onClick={() => setMode('execute')}
+                  className={`cursor-pointer flex items-center px-3 py-1 rounded-full transition-colors ${mode === 'chat' ? 'bg-blue-100 shadow' : 'text-gray-600 hover:text-gray-800'}`}
+                  onClick={() => setMode('chat')}
                 >
                   <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  Execute
+                  Chat
                 </button>
               </div>
               
