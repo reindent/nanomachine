@@ -4,6 +4,11 @@
 
 Nanomachine is a Virtual Machine (VM) AI agent dashboard that enables intelligent operative system automation and control. It provides a modern, intuitive interface for interacting with AI agents that can navigate and perform tasks in web browsers, filesystems, and more.
 
+**Join Our Community!**
+
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/mncgG7JHfS)
+
+
 ## Project Overview
 
 Nanomachine consists of three main components that work together to provide a seamless AI agent experience:
